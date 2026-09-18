@@ -1,0 +1,15 @@
+[package]
+name = "pixelgen-cli"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "pixelgen"
+path = "src/main.rs"
+
+[dependencies]
+pixelgen-core = { workspace = true }
+serde_yaml = { workspace = true }
+clap = { workspace = true }
+image = { workspace = true }
+gif = { workspace = true }

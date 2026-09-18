@@ -1,0 +1,82 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>pixelgen</title>
+<link rel="stylesheet" href="style.css">
+
+<header>
+  <h1>pixelgen</h1>
+  <label class="file">
+    <input type="file" id="file" accept="image/*" hidden>
+    Open image
+  </label>
+  <button id="starter" disabled>Starter scene</button>
+  <span id="status">Drop a photograph anywhere, or open one.</span>
+</header>
+
+<main>
+  <section id="stage">
+    <div id="viewport">
+      <canvas id="view" width="16" height="16"></canvas>
+      <!-- Sits exactly over the view, at grid resolution, for mask overlays
+           and for the outline being drawn. -->
+      <canvas id="overlay" width="16" height="16"></canvas>
+      <p id="drop">Drop a photograph here</p>
+    </div>
+
+    <div id="transport">
+      <button id="play" disabled>Play</button>
+      <input type="range" id="scrub" min="0" max="0" value="0" disabled>
+      <output id="counter">-</output>
+      <label><input type="checkbox" id="showmask"> mask</label>
+      <button id="png" disabled>Frame PNG</button>
+      <button id="record" disabled>Record loop</button>
+    </div>
+
+    <div id="palette"></div>
+  </section>
+
+  <section id="side">
+    <nav class="tabs">
+      <button data-tab="scene" class="on">Scene</button>
+      <button data-tab="layers">Layers</button>
+      <button data-tab="draw">Draw a mask</button>
+    </nav>
+
+    <div class="tab" data-tab="scene">
+      <textarea id="yaml" spellcheck="false" placeholder="Open an image, then press &quot;Starter scene&quot;."></textarea>
+      <pre id="error" hidden></pre>
+    </div>
+
+    <div class="tab" data-tab="layers" hidden>
+      <ul id="layers"></ul>
+      <h3>Effects</h3>
+      <ul id="catalog"></ul>
+    </div>
+
+    <div class="tab" data-tab="draw" hidden>
+      <p class="hint">
+        Click to place points around a region, then copy the selector into a
+        layer's <code>mask:</code> or into <code>regions:</code>. Coordinates
+        are fractions of the frame, so they survive a change of
+        <code>width</code>.
+      </p>
+      <div class="row">
+        <button id="shape-polygon" class="on">Polygon</button>
+        <button id="shape-rect">Rectangle</button>
+        <button id="shape-ellipse">Ellipse</button>
+        <button id="clear">Clear</button>
+      </div>
+      <textarea id="snippet" spellcheck="false" readonly></textarea>
+      <button id="copy">Copy</button>
+      <p class="hint">
+        A drawn outline is a last resort. A selector that keys on the image
+        itself - <code>chroma</code> for a warm interior against cool daylight,
+        <code>luma</code> for highlights - cuts the exact silhouette of
+        whatever stands in front, and keeps doing so when you change the grid.
+      </p>
+    </div>
+  </section>
+</main>
+
+<script type="module" src="app.js"></script>

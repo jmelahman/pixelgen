@@ -1,0 +1,22 @@
+[package]
+name = "pixelgen-wasm"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Browser bindings for the pixelgen renderer"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+pixelgen-core = { workspace = true }
+wasm-bindgen = "0.2"
+serde_yaml = { workspace = true }
+
+# Turns a Rust panic into a readable console trace instead of the bare
+# "unreachable executed" that wasm otherwise reports.
+console_error_panic_hook = "0.1"
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = ["-Os"]
