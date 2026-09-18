@@ -104,8 +104,17 @@ await send('Emulation.setEmulatedMedia', {
 });
 await send('Page.navigate', { url });
 // The module does top-level await on the wasm init; poll rather than guess.
-for (let i = 0; i < 100 && !(await evaluate('!!window.pixelgen').catch(() => false)); i++) {
-  await new Promise((r) => setTimeout(r, 100));
+let ready = false;
+for (let i = 0; i < 100 && !ready; i++) {
+  ready = await evaluate('!!window.pixelgen').catch(() => false);
+  if (!ready) await new Promise((r) => setTimeout(r, 100));
+}
+// Falling through to the driving below would report the page's failure to
+// start as an unrelated TypeError on `undefined`. Whatever the page logged on
+// its way down is the thing worth reading.
+if (!ready) {
+  console.error('the page never started; console said:', errors.length ? errors : '(nothing)');
+  process.exit(1);
 }
 
 // --empty stops before an image is opened, which is the only way to look at
@@ -176,6 +185,14 @@ const out = empty ? { boxes: [[0, 0, 0, 0], [0, 0, 0, 0]], grid: [0, 0] } : awai
     snippet: document.getElementById('snippet').value,
     error: document.getElementById('error').hidden ? null : document.getElementById('error').textContent,
     scene: document.getElementById('yaml').value.slice(0, 40),
+    // The GIF encoder is the renderer's own, so it is worth knowing it still
+    // produces a GIF rather than only that the button exists.
+    gif: (() => {
+      const b = s.gif(1);
+      return { bytes: b.length, magic: String.fromCharCode(...b.slice(0, 6)) };
+    })(),
+    // Relabelled at load to whatever the browser can actually record.
+    video: document.getElementById('save-video').textContent.trim(),
     status: document.getElementById('status').textContent,
     // A blank canvas is the failure this whole test exists to catch.
     painted: (() => {
@@ -210,6 +227,8 @@ if (!out.painted) bad.push('canvas is a flat colour');
 if (out.error) bad.push('scene error: ' + out.error);
 if (!out.layers.length) bad.push('no layers');
 if (!out.scene.trim()) bad.push('opening an image left the scene box empty');
+if (out.gif.magic !== 'GIF89a') bad.push('gif export produced ' + JSON.stringify(out.gif));
+if (!/^(MP4|WEBM) /.test(out.video)) bad.push('video item is labelled ' + JSON.stringify(out.video));
 if (out.boxes[0].join() !== out.boxes[1].join()) bad.push('overlay is not over the plate: ' + JSON.stringify(out.boxes));
 // The plate should be the largest whole multiple of the frame that fits: not
 // left at 1x in a large viewport, and not blown past the edges of a small one.
