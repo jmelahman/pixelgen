@@ -266,7 +266,8 @@ regions:
       count: 260         # drops across the frame
       speed: 2           # full falls per loop; whole numbers only, or it jumps
       layers: 3          # parallax depth
-      length: 7
+      length: 7          # length and thickness are in cells of a 320-wide grid
+      thickness: 1       # and grow or shrink with the grid
       slant: 0.28
       opacity: 0.3
 "#,

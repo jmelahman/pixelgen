@@ -208,6 +208,33 @@ pub(crate) fn color(hex: &Option<String>, fallback: Rgb) -> Result<Rgb, Error> {
     }
 }
 
+/// The grid width the weather effects' sizes are written for.
+///
+/// Rain streaks and fog clouds are sized in cells of a grid this wide and
+/// scale with the actual one, so a scene keeps its look when its `width`
+/// changes instead of the weather shrinking relative to the frame. It matches
+/// the default grid but is deliberately its own number: changing the default
+/// must not rescale the weather in every scene already written.
+const REFERENCE_WIDTH: f32 = 320.0;
+
+/// How many cells of `dst` one cell of the reference grid spans.
+pub(crate) fn grid_scale(dst: &Image) -> f32 {
+    dst.w as f32 / REFERENCE_WIDTH
+}
+
+/// Check a size that has to be a positive, finite number.
+///
+/// Zero, negative, NaN and infinite sizes either draw nothing, divide by zero
+/// or never finish drawing; naming the parameter beats any of those.
+pub(crate) fn positive(effect: &'static str, param: &'static str, v: f32) -> Result<f32, Error> {
+    if !(v > 0.0 && v.is_finite()) {
+        return Err(Error::BadParams(format!(
+            "{effect}: {param} is {v}, but it must be a positive, finite number"
+        )));
+    }
+    Ok(v)
+}
+
 /// Check a parameter that counts whole steps per loop.
 ///
 /// Go silently clamped these to 1, which turned a scene-file mistake into a

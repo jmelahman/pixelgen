@@ -14,7 +14,7 @@ use core::f32::consts::TAU;
 use serde::{Deserialize, Serialize};
 use serde_yaml::Value;
 
-use super::{decode, whole, Context, Effect, Error};
+use super::{decode, positive, whole, Context, Effect, Error};
 use crate::noise;
 use crate::pixel::Image;
 
@@ -60,12 +60,7 @@ struct Sway {
 pub(super) fn sway(params: &Value) -> Result<Box<dyn Effect>, Error> {
     let cfg: SwayCfg = decode(params)?;
     whole("sway", "speed", cfg.speed)?;
-    if cfg.wavelength <= 0.0 {
-        return Err(Error::BadParams(format!(
-            "sway: wavelength is {}, but it divides the row index and must be positive",
-            cfg.wavelength
-        )));
-    }
+    positive("sway", "wavelength", cfg.wavelength)?;
     Ok(Box::new(Sway { cfg }))
 }
 
@@ -135,12 +130,7 @@ struct Shimmer {
 pub(super) fn shimmer(params: &Value) -> Result<Box<dyn Effect>, Error> {
     let cfg: ShimmerCfg = decode(params)?;
     whole("shimmer", "speed", cfg.speed)?;
-    if cfg.wavelength <= 0.0 {
-        return Err(Error::BadParams(format!(
-            "shimmer: wavelength is {}, but it divides a coordinate and must be positive",
-            cfg.wavelength
-        )));
-    }
+    positive("shimmer", "wavelength", cfg.wavelength)?;
     Ok(Box::new(Shimmer { cfg }))
 }
 

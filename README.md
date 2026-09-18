@@ -289,9 +289,14 @@ silently disabling a layer.
 Parameters named `speed`, `rotations`, `period` and `dir_*` are counted **per
 loop** and must be whole numbers; that is what makes the loop close.
 
+The weather effects are sized for a 320-wide grid and scale with the actual
+one, so a scene looks the same at any `width`: rain's `length` and `thickness`
+are in cells of that reference grid, and mist and steam's `scale` (and steam's
+`wobble`) are measured against it too.
+
 | Type            | Purpose                                      | Key parameters                                                                     |
 | --------------- | -------------------------------------------- | ---------------------------------------------------------------------------------- |
-| `rain`          | Falling streaks in parallax layers           | `count`, `speed`, `layers`, `length`, `slant`, `opacity`, `color`                  |
+| `rain`          | Falling streaks in parallax layers           | `count`, `speed`, `layers`, `length`, `thickness`, `slant`, `opacity`, `color`     |
 | `mist`          | Drifting fog from tiling fractal noise       | `scale`, `period`, `dir_x`, `dir_y`, `threshold`, `softness`, `opacity`, `octaves` |
 | `steam`         | Wisps rising out of the region               | `scale`, `rise`, `threshold`, `opacity`, `wobble`                                  |
 | `flicker`       | Brightness and temperature wobble on a light | `amount`, `speed`, `turbulence`, `warmth`, `color`                                 |
