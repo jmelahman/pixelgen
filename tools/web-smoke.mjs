@@ -16,7 +16,7 @@ import { pathToFileURL } from 'node:url';
 const ROOT = new URL('../web/', import.meta.url).pathname;
 const TYPES = {
   '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css',
-  '.wasm': 'application/wasm',
+  '.wasm': 'application/wasm', '.svg': 'image/svg+xml', '.png': 'image/png',
 };
 
 const server = createServer(async (req, res) => {

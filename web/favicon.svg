@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" shape-rendering="crispEdges">
+<!-- A sunset on a 16x16 grid: the left half is the smooth ramp of a photograph,
+     the right half the same pixels snapped to a four-color palette. -->
+<rect x="0" y="0" width="16" height="1" fill="#1b2340"/>
+<rect x="0" y="1" width="8" height="1" fill="#2a2745"/>
+<rect x="8" y="1" width="8" height="1" fill="#1b2340"/>
+<rect x="0" y="2" width="8" height="1" fill="#382c4a"/>
+<rect x="8" y="2" width="8" height="1" fill="#1b2340"/>
+<rect x="0" y="3" width="8" height="1" fill="#473050"/>
+<rect x="8" y="3" width="8" height="1" fill="#6a3a5c"/>
+<rect x="0" y="4" width="8" height="1" fill="#563455"/>
+<rect x="8" y="4" width="8" height="1" fill="#6a3a5c"/>
+<rect x="0" y="5" width="8" height="1" fill="#64385a"/>
+<rect x="8" y="5" width="8" height="1" fill="#6a3a5c"/>
+<rect x="0" y="6" width="8" height="1" fill="#81415c"/>
+<rect x="8" y="6" width="8" height="1" fill="#6a3a5c"/>
+<rect x="0" y="7" width="6" height="1" fill="#a74c5d"/>
+<rect x="6" y="7" width="1" height="1" fill="#f8b66d"/>
+<rect x="7" y="7" width="1" height="1" fill="#f8ba71"/>
+<rect x="8" y="7" width="2" height="1" fill="#f7b267"/>
+<rect x="10" y="7" width="6" height="1" fill="#6a3a5c"/>
+<rect x="0" y="8" width="5" height="1" fill="#ce585d"/>
+<rect x="5" y="8" width="1" height="1" fill="#f8ba71"/>
+<rect x="6" y="8" width="1" height="1" fill="#f9c17a"/>
+<rect x="7" y="8" width="1" height="1" fill="#f9c580"/>
+<rect x="8" y="8" width="3" height="1" fill="#f7b267"/>
+<rect x="11" y="8" width="5" height="1" fill="#f4635e"/>
+<rect x="0" y="9" width="4" height="1" fill="#f4635e"/>
+<rect x="4" y="9" width="1" height="1" fill="#f8b66d"/>
+<rect x="5" y="9" width="1" height="1" fill="#f9c17a"/>
+<rect x="6" y="9" width="1" height="1" fill="#faca86"/>
+<rect x="7" y="9" width="1" height="1" fill="#fbd08e"/>
+<rect x="8" y="9" width="4" height="1" fill="#f7b267"/>
+<rect x="12" y="9" width="4" height="1" fill="#f4635e"/>
+<rect x="0" y="10" width="4" height="1" fill="#f57d61"/>
+<rect x="4" y="10" width="1" height="1" fill="#f8ba71"/>
+<rect x="5" y="10" width="1" height="1" fill="#f9c580"/>
+<rect x="6" y="10" width="1" height="1" fill="#fbd08e"/>
+<rect x="7" y="10" width="1" height="1" fill="#fcda9b"/>
+<rect x="8" y="10" width="4" height="1" fill="#f7b267"/>
+<rect x="12" y="10" width="4" height="1" fill="#f4635e"/>
+<rect x="0" y="11" width="4" height="1" fill="#f69864"/>
+<rect x="4" y="11" width="1" height="1" fill="#f8ba71"/>
+<rect x="5" y="11" width="1" height="1" fill="#f9c580"/>
+<rect x="6" y="11" width="1" height="1" fill="#fbd08e"/>
+<rect x="7" y="11" width="1" height="1" fill="#fcda9b"/>
+<rect x="8" y="11" width="8" height="1" fill="#f7b267"/>
+<rect x="0" y="12" width="5" height="1" fill="#0a0a0c"/>
+<rect x="5" y="12" width="1" height="1" fill="#f9c17a"/>
+<rect x="6" y="12" width="1" height="1" fill="#faca86"/>
+<rect x="7" y="12" width="1" height="1" fill="#fbd08e"/>
+<rect x="8" y="12" width="3" height="1" fill="#f7b267"/>
+<rect x="11" y="12" width="5" height="1" fill="#0a0a0c"/>
+<rect x="0" y="13" width="16" height="1" fill="#0a0a0c"/>
+<rect x="0" y="14" width="16" height="1" fill="#0a0a0c"/>
+<rect x="0" y="15" width="16" height="1" fill="#0a0a0c"/>
+</svg>
