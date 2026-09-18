@@ -108,7 +108,7 @@ pub fn prepare(src: &Image, s: &Scene) -> Result<Prepared, Error> {
 
     // One builder for the whole scene, so a region shared by several layers is
     // evaluated once.
-    let mut builder = Builder::new(&base, &s.regions);
+    let mut builder = Builder::new(&base, &s.regions).dithered(s.palette.dither > 0.0);
     let mut layers = Vec::new();
     for (i, l) in s.layers.iter().enumerate() {
         if l.disable {

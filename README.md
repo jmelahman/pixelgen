@@ -52,9 +52,11 @@ have actually moved in between.
 
 There is no scene understanding here. Effects are confined by masks declared in
 the scene file, in normalized `0..1` coordinates so they survive a change of
-`width`. Masks can be rectangles, ellipses, polygons, soft bands, a luma range, "pixels
-near this color", or a color-temperature range, combined with `all`
-(intersect) and `any` (union), and modified by `invert`, `feather` and `gain`.
+`width`. Masks can be rectangles, ellipses, polygons, SVG-style paths, brush
+strokes, soft bands, a luma range, "pixels near this color", a magic-wand flood
+or a color-temperature range. They are combined with `steps` (add, subtract,
+intersect, in order), `all` (intersect) and `any` (union), and modified by
+`grow`, `smooth`, `invert`, `feather` and `gain`.
 
 ### Depth, without a depth map
 
@@ -128,8 +130,14 @@ a reimplementation that drifts.
 The renderer compiles to wasm, and `web/` is a small editor built on it: open a
 photograph and it lands in the scene its own analysis suggests, with the loop
 playing beside it. The **Layers** tab is where it is edited: add, remove,
-reorder and hide layers, set each one's parameters, and draw its mask over the
-frame. **Scene** is the same thing as raw YAML, for anything the panel does not
+reorder and hide layers, and set each one's parameters. **Mask** is a selection
+editor in the manner of Photoshop's: marquee, lasso (freehand, polygonal and
+magnetic), magic wand and color range, a Bézier pen and a brush, with
+<kbd>Shift</kbd> to add, <kbd>Alt</kbd> to subtract and both to intersect, and
+grow, smooth and feather to refine the edge. The selection is applied to the
+selected layer's mask (replacing, adding to, subtracting from or intersecting
+it) or saved as a named region. What is kept is the selector, never the pixels
+it caught, so a selection survives a change of `width` or palette. **Scene** is the same thing as raw YAML, for anything the panel does not
 cover; an edit in either shows up in the other.
 
 **Save** writes a PNG of the current frame, a GIF of the loop, or a recording
@@ -160,7 +168,7 @@ silhouette it actually cuts is visible before anything is animated.
 
 `tools/web-smoke.mjs` drives the page in headless Chromium — loads an image,
 generates a scene, plays it, scrubs, overlays a mask, adds, edits and hides a
-layer from the panel, draws a polygon — and
+layer from the panel, and works each selection tool and applies the result — and
 fails if the canvas comes out blank or anything reaches the console.
 
 Recording from the page re-encodes the frames with `MediaRecorder`, which is
@@ -243,15 +251,35 @@ layers:
 | `rect: {x, y, w, h}`        | A box, in normalized `0..1` coordinates                     |
 | `ellipse: {x, y, w, h}`     | An ellipse inscribed in that box                            |
 | `polygon: [{x, y}, ...]`    | An arbitrary outline                                        |
+| `path: "M.1 .2 L.3 .2 ..."` | SVG path data (`M L H V C S Q T Z`), filled even-odd        |
+| `stroke: {d, radius, hardness}` | A brush stroke along path data; `radius` is a fraction of the width |
+| `wand: {x, y, hex, tolerance, contiguous}` | Cells near the color `hex`, flooded from the point `x, y` |
 | `band: {axis, start, end}`  | A soft gradient along `x` or `y`; reversed if `end < start` |
 | `luma: {min, max}`          | Pixels in a brightness range                                |
 | `color: {hex, tolerance}`   | Pixels near one color                                       |
 | `chroma: {min, max, soft}`  | Pixels in a color-temperature range                         |
 | `ref: <name>`               | A region declared in `regions:`                             |
 | `all: [...]` / `any: [...]` | Intersection / union                                        |
+| `steps: [{add: ...}, {sub: ...}, {and: ...}]` | Each step folded into the ones before: union, difference, intersection; the first must be `add` |
 
-Modifiers `invert`, `feather` (blur radius in cells) and `gain` apply to any of
-them, in that order.
+Modifiers `grow` (cells; negative shrinks), `smooth` (cells), `invert`,
+`feather` (blur radius in cells) and `gain` apply to any of them, in that
+order.
+
+A wand records the color it was clicked on as well as where, and floods from
+the nearest cell of that color, so it keeps selecting the same thing when a
+change of `width` or palette moves what lies under the point. This is what the
+editor's selection tools write:
+
+```yaml
+mask:
+  steps:
+    - add: { wand: { x: 0.41, y: 0.3, hex: "#3a5f8c", tolerance: 0.1 } }
+    - add: { path: "M.1 .2L.3 .22L.28 .41Z" }
+    - sub: { stroke: { d: "M.2 .3L.25 .31L.3 .35", radius: 0.01 } }
+  grow: -1
+  feather: 1
+```
 
 Unknown keys are rejected at load time, so a typo fails immediately instead of
 silently disabling a layer.

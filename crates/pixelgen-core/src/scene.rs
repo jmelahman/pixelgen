@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 use serde_yaml::Value;
 
 use crate::effect;
-use crate::mask::{self, Registry, Spec};
+use crate::mask::{self, Registry, Spec, Step};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
@@ -168,6 +168,8 @@ pub enum Error {
     NoLayer(usize),
     /// An edit set a parameter the layer's effect does not take.
     Param(String),
+    /// An edit named a region with no name.
+    RegionName,
 }
 
 impl fmt::Display for Error {
@@ -181,6 +183,7 @@ impl fmt::Display for Error {
             Error::Mask(e) => write!(f, "scene: {e}"),
             Error::NoLayer(i) => write!(f, "scene: there is no layer {i}"),
             Error::Param(m) => write!(f, "scene: {m}"),
+            Error::RegionName => write!(f, "scene: a region needs a name"),
         }
     }
 }
@@ -339,4 +342,109 @@ impl Scene {
         self.layer_mut(i)?.mask = mask;
         Ok(())
     }
+
+    /// Fold a selection into a layer's mask the way an image editor applies a
+    /// selection to a layer mask. `None` for either means the whole frame.
+    ///
+    /// A mask that is already a `steps` list with no modifiers is appended to,
+    /// so repeatedly adding and subtracting keeps the scene flat. Anything
+    /// else becomes the first step of a new list.
+    pub fn combine_layer_mask(
+        &mut self,
+        i: usize,
+        sel: Option<Spec>,
+        mode: Combine,
+    ) -> Result<(), Error> {
+        let l = self.layer_mut(i)?;
+        let sel = sel.map(simplify).filter(|s| !s.is_full_frame());
+        let old = l.mask.take();
+        l.mask = match (mode, old, sel) {
+            (Combine::Replace, _, sel) => sel,
+            // Adding to the whole frame, or adding the whole frame: the whole frame.
+            (Combine::Add, None, _) | (Combine::Add, _, None) => None,
+            (Combine::And, None, sel) => sel,
+            (Combine::And, old, None) => old,
+            (Combine::Sub, old, None) => {
+                Some(then(old.unwrap_or_default(), Step::sub(Spec::default())))
+            }
+            (Combine::Sub, old, Some(s)) => Some(then(old.unwrap_or_default(), Step::sub(s))),
+            (Combine::Add, Some(old), Some(s)) => Some(then(old, Step::add(s))),
+            (Combine::And, Some(old), Some(s)) => Some(then(old, Step::and(s))),
+        };
+        Ok(())
+    }
+
+    /// Define, replace or (with `None`) remove a named region.
+    ///
+    /// A new definition may refer to the one it replaces - a region loaded as
+    /// a selection, refined and saved back under its own name - so those
+    /// references are replaced by the old definition rather than left to
+    /// refer to themselves.
+    pub fn set_region(&mut self, name: &str, spec: Option<Spec>) -> Result<(), Error> {
+        let name = name.trim();
+        if name.is_empty() {
+            return Err(Error::RegionName);
+        }
+        match spec {
+            Some(mut s) => {
+                if let Some(old) = self.regions.get(name) {
+                    inline_ref(&mut s, name, old);
+                }
+                self.regions.insert(name.into(), simplify(s));
+            }
+            None => {
+                self.regions.remove(name);
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Replaces every `ref: name` inside `s` with `def`. A reference's own
+/// modifiers apply after the region's, so a modified one wraps it as a step.
+fn inline_ref(s: &mut Spec, name: &str, def: &Spec) {
+    if s.r#ref == name {
+        s.r#ref.clear();
+        if s.has_modifiers() {
+            s.steps = vec![Step::add(def.clone())];
+        } else {
+            *s = def.clone();
+        }
+        return;
+    }
+    let steps = s.steps.iter_mut().flat_map(|st| [&mut st.add, &mut st.sub, &mut st.and]);
+    for sub in s.all.iter_mut().chain(s.any.iter_mut()).chain(steps.flatten()) {
+        inline_ref(sub, name, def);
+    }
+}
+
+/// How a selection is folded into an existing mask.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Combine {
+    Replace,
+    Add,
+    Sub,
+    And,
+}
+
+/// `spec` followed by one more step, appended to its own list when that does
+/// not change what any modifier applies to.
+fn then(mut spec: Spec, step: Step) -> Spec {
+    if spec.steps.is_empty() || spec.has_modifiers() {
+        spec = Spec { steps: vec![Step::add(spec)], ..Spec::default() };
+    }
+    spec.steps.push(step);
+    spec
+}
+
+/// A `steps` list of one `add` and nothing else is just that operand.
+fn simplify(s: Spec) -> Spec {
+    if s.steps.len() == 1 && !s.has_modifiers() && s.steps[0].add.is_some() {
+        let only = Spec { steps: Vec::new(), ..s.clone() };
+        if only.is_full_frame() {
+            return simplify(s.steps.into_iter().next().and_then(|st| st.add).unwrap_or_default());
+        }
+    }
+    s
 }

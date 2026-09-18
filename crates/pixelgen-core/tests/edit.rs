@@ -2,8 +2,8 @@
 //! scene edits it makes.
 
 use pixelgen_core::effect::{self, CATALOG};
-use pixelgen_core::mask::Spec;
-use pixelgen_core::scene::Scene;
+use pixelgen_core::mask::{Spec, Step};
+use pixelgen_core::scene::{Combine, Scene};
 use serde_yaml::Value;
 
 /// `defaults` and `build` are two matches over the same names. A missing arm,
@@ -99,4 +99,163 @@ fn edited_scenes_round_trip_through_yaml() {
 
     s.set_layer_mask(0, None).unwrap();
     assert!(Scene::parse(&s.to_yaml().unwrap()).unwrap().layers[0].mask.is_none());
+}
+
+// ---------------------------------------------------------------- selections
+
+fn spec(yaml: &str) -> Spec {
+    serde_yaml::from_str(yaml).unwrap()
+}
+
+fn ops(s: &Spec) -> Vec<&str> {
+    s.steps.iter().map(|st| st.op().unwrap().0).collect()
+}
+
+const LEFT: &str = "rect: { x: 0, y: 0, w: 0.5, h: 1 }";
+const TOP: &str = "rect: { x: 0, y: 0, w: 1, h: 0.5 }";
+
+#[test]
+fn a_selection_combines_into_a_layer_without_a_mask() {
+    let mut s = scene();
+    s.combine_layer_mask(0, Some(spec(LEFT)), Combine::Add).unwrap();
+    assert!(s.layers[0].mask.is_none(), "adding to the whole frame is the whole frame");
+
+    s.combine_layer_mask(0, Some(spec(LEFT)), Combine::And).unwrap();
+    assert!(s.layers[0].mask.as_ref().unwrap().rect.is_some());
+
+    s.set_layer_mask(0, None).unwrap();
+    s.combine_layer_mask(0, Some(spec(LEFT)), Combine::Sub).unwrap();
+    let m = s.layers[0].mask.as_ref().unwrap();
+    assert_eq!(ops(m), ["add", "sub"]);
+    assert!(m.steps[0].add.as_ref().unwrap().is_full_frame());
+    s.validate().unwrap();
+
+    s.combine_layer_mask(0, Some(spec(TOP)), Combine::Replace).unwrap();
+    assert_eq!(s.layers[0].mask.as_ref().unwrap().rect.unwrap().h, 0.5);
+}
+
+#[test]
+fn every_mode_folds_a_selection_into_an_existing_mask() {
+    for (mode, op) in [(Combine::Add, "add"), (Combine::Sub, "sub"), (Combine::And, "and")] {
+        let mut s = scene();
+        s.set_layer_mask(0, Some(spec(LEFT))).unwrap();
+        s.combine_layer_mask(0, Some(spec(TOP)), mode).unwrap();
+        let m = s.layers[0].mask.as_ref().unwrap();
+        assert_eq!(ops(m), ["add", op], "{mode:?}");
+        assert!(m.steps[0].add.as_ref().unwrap().rect.is_some());
+        s.validate().unwrap();
+    }
+}
+
+/// Repeated edits keep one flat list rather than nesting a level each time,
+/// unless a modifier on the list would then apply to the new step too.
+#[test]
+fn combining_appends_to_a_plain_steps_list() {
+    let mut s = scene();
+    s.set_layer_mask(0, Some(spec(LEFT))).unwrap();
+    s.combine_layer_mask(0, Some(spec(TOP)), Combine::Add).unwrap();
+    s.combine_layer_mask(
+        0,
+        Some(spec("ellipse: { x: 0.4, y: 0.4, w: 0.2, h: 0.2 }")),
+        Combine::Sub,
+    )
+    .unwrap();
+    assert_eq!(ops(s.layers[0].mask.as_ref().unwrap()), ["add", "add", "sub"]);
+
+    let mut feathered = s.layers[0].mask.clone().unwrap();
+    feathered.feather = 2.0;
+    s.set_layer_mask(0, Some(feathered)).unwrap();
+    s.combine_layer_mask(0, Some(spec(TOP)), Combine::And).unwrap();
+    let m = s.layers[0].mask.as_ref().unwrap();
+    assert_eq!(ops(m), ["add", "and"]);
+    assert_eq!(m.steps[0].add.as_ref().unwrap().feather, 2.0);
+}
+
+/// A selection of one `add` step is written as just its operand, and Select
+/// All applied as a replacement clears the mask.
+#[test]
+fn a_selection_is_simplified_before_it_is_stored() {
+    let mut s = scene();
+    let one = Spec { steps: vec![Step::add(spec(LEFT))], ..Spec::default() };
+    s.combine_layer_mask(0, Some(one.clone()), Combine::Replace).unwrap();
+    let m = s.layers[0].mask.as_ref().unwrap();
+    assert!(m.steps.is_empty() && m.rect.is_some());
+
+    s.combine_layer_mask(0, Some(Spec::default()), Combine::Replace).unwrap();
+    assert!(s.layers[0].mask.is_none());
+
+    s.set_region("left", Some(one)).unwrap();
+    assert!(s.regions["left"].rect.is_some());
+}
+
+#[test]
+fn regions_are_set_replaced_and_removed() {
+    let mut s = scene();
+    s.set_region(" sky ", Some(spec(TOP))).unwrap();
+    s.set_region("ground", Some(spec(LEFT))).unwrap();
+    assert_eq!(s.regions.keys().collect::<Vec<_>>(), ["ground", "sky"]);
+    s.set_layer_mask(0, Some(spec("ref: sky"))).unwrap();
+    s.validate().unwrap();
+
+    s.set_region("sky", Some(spec(LEFT))).unwrap();
+    assert_eq!(s.regions["sky"].rect.unwrap().w, 0.5);
+    assert!(s.set_region("  ", Some(spec(LEFT))).is_err());
+
+    s.set_region("sky", None).unwrap();
+    assert!(!s.regions.contains_key("sky"));
+    assert!(s.validate().is_err(), "the layer still refers to the removed region");
+}
+
+#[test]
+fn a_region_saved_over_itself_keeps_its_old_definition() {
+    let mut s = scene();
+    s.set_region("sky", Some(spec(TOP))).unwrap();
+
+    // Loaded as a selection and saved back unchanged.
+    s.set_region("sky", Some(spec("ref: sky"))).unwrap();
+    assert!(s.regions["sky"].rect.is_some());
+    s.validate().unwrap();
+
+    // Refined, and with a step added.
+    s.set_region(
+        "sky",
+        Some(spec(
+            "steps: [{add: {ref: sky, grow: 2}}, {sub: {rect: {x: 0, y: 0, w: 0.1, h: 0.1}}}]",
+        )),
+    )
+    .unwrap();
+    s.validate().unwrap();
+    let sky = &s.regions["sky"];
+    let first = sky.steps[0].add.as_ref().unwrap();
+    assert!(first.r#ref.is_empty() && first.grow == 2.0);
+    assert!(first.steps[0].add.as_ref().unwrap().rect.is_some());
+}
+
+#[test]
+fn selections_round_trip_through_the_scene_file() {
+    let mut s = scene();
+    let sel = Spec {
+        steps: vec![
+            Step::add(spec("wand: { x: 0.4, y: 0.3, hex: '#3a5f8c', tolerance: 0.1 }")),
+            Step::add(spec("path: M.1 .2 L.3 .22 L.28 .41 Z")),
+            Step::sub(spec("stroke: { d: M.2 .3 L.25 .31, radius: 0.02, hardness: 0.5 }")),
+        ],
+        grow: -1.0,
+        smooth: 1.0,
+        ..Spec::default()
+    };
+    s.combine_layer_mask(0, Some(sel), Combine::Replace).unwrap();
+    s.set_region("b", Some(spec(TOP))).unwrap();
+    s.set_region("a", Some(spec(LEFT))).unwrap();
+    let yaml = s.to_yaml().unwrap();
+    assert!(!yaml.contains('!'), "an enum tag was written:\n{yaml}");
+    assert!(yaml.find("a:").unwrap() < yaml.find("b:").unwrap(), "regions out of order");
+
+    let back = Scene::parse(&yaml).unwrap();
+    back.validate().unwrap();
+    assert_eq!(back.to_yaml().unwrap(), yaml);
+    let m = back.layers[0].mask.as_ref().unwrap();
+    assert_eq!(ops(m), ["add", "add", "sub"]);
+    assert_eq!((m.grow, m.smooth), (-1.0, 1.0));
+    assert!(m.steps[0].add.as_ref().unwrap().wand.as_ref().unwrap().contiguous);
 }

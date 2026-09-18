@@ -167,7 +167,7 @@ if (!ready) {
 // the state the page is actually first seen in.
 const empty = process.argv.includes('--empty');
 
-const out = empty ? { boxes: [[0, 0, 0, 0], [0, 0, 0, 0]], grid: [0, 0] } : await evaluate(`(async () => {
+const out = empty ? { boxes: [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]], grid: [0, 0] } : await evaluate(`(async () => {
   // A cool upper half, a warm lower half, a small bright warm lamp: the shape
   // the starter analysis is looking for.
   const c = document.createElement('canvas');
@@ -253,17 +253,88 @@ const out = empty ? { boxes: [[0, 0, 0, 0], [0, 0, 0, 0]], grid: [0, 0] } : awai
   panel.layerError = document.getElementById('layer-error').hidden
     ? null : document.getElementById('layer-error').textContent;
 
-  // The mask editor. Real clicks on the overlay, so the coordinate mapping
-  // from screen space back to the 0..1 the scene format uses is exercised
-  // rather than bypassed.
+  // The selection tools, driven by pointer events on the canvas they listen
+  // to, so the mapping from screen space back to the 0..1 the scene format
+  // uses is exercised rather than bypassed.
   document.querySelector('.tabs [data-tab="draw"]').click();
-  const overlay = document.getElementById('overlay');
-  const r = overlay.getBoundingClientRect();
-  for (const [x, y] of [[0.1, 0.1], [0.9, 0.2], [0.5, 0.8]]) {
-    overlay.dispatchEvent(new MouseEvent('click', {
-      clientX: r.left + x * r.width, clientY: r.top + y * r.height, bubbles: true,
+  const ui = document.getElementById('ui');
+  const st = window.pixelgen.state;
+  const ptr = (type, [x, y], mods = {}) => {
+    const r = ui.getBoundingClientRect();
+    ui.dispatchEvent(new PointerEvent(type, {
+      clientX: r.left + x * r.width, clientY: r.top + y * r.height,
+      bubbles: true, button: 0, pointerId: 1, ...mods,
     }));
+  };
+  const drag = (pts, mods) => {
+    ptr('pointerdown', pts[0], mods);
+    for (const p of pts.slice(1)) ptr('pointermove', p, mods);
+    ptr('pointerup', pts.at(-1), mods);
+  };
+  const key = (k, mods = {}) => document.body.dispatchEvent(new KeyboardEvent('keydown', {
+    key: k, code: k.length === 1 ? 'Key' + k.toUpperCase() : k, bubbles: true, ...mods,
+  }));
+  const tool = (t) => document.querySelector('.tools [data-tool="' + t + '"]').click();
+  const ops = () => st.sel?.steps?.map((x) => Object.keys(x)[0]) ?? [];
+  const covered = () => (st.selCov ?? []).reduce((a, v) => a + v, 0);
+  const layerMask = () => st.layers[st.selected]?.mask ?? null;
+  const sel = {};
+
+  tool('rect');
+  drag([[0.1, 0.1], [0.3, 0.2], [0.4, 0.4]]);
+  drag([[0.5, 0.5], [0.7, 0.7]], { shiftKey: true });
+  drag([[0.15, 0.15], [0.2, 0.2]], { altKey: true });
+  sel.ops = ops();
+  sel.ants = st.runs.length;
+
+  // Ctrl+Z takes back a selection step and leaves the scene alone.
+  const text = document.getElementById('yaml').value;
+  key('z', { ctrlKey: true });
+  sel.undone = ops();
+  sel.sceneKept = document.getElementById('yaml').value === text;
+
+  document.getElementById('apply-mask').click();
+  sel.replaced = layerMask();
+  drag([[0.6, 0.1], [0.8, 0.3]]);
+  document.querySelector('#apply-menu [data-combine="add"]').click();
+  sel.added = layerMask();
+
+  document.getElementById('region-name').value = 'smoke';
+  document.getElementById('region-name').dispatchEvent(new Event('input'));
+  document.getElementById('region-form').requestSubmit();
+  sel.region = JSON.parse(s.regions()).includes('smoke')
+    && document.getElementById('yaml').value.includes('smoke:');
+
+  // The wand, on the flat cool upper half: nothing below the horizon.
+  tool('wand');
+  ptr('pointerdown', [0.5, 0.2]);
+  ptr('pointerup', [0.5, 0.2]);
+  {
+    const w = s.width, h = s.height, c = st.selCov;
+    let top = 0, n = 0, low = 0;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      if (y < h * 0.4) { top += c[y * w + x] > 127; n++; }
+      if (y > h * 0.6) low += c[y * w + x] > 0;
+    }
+    sel.wand = { top: top / n, low, spec: st.sel.steps[0].add.wand };
   }
+
+  // The pen: three corners, the middle one dragged out into a curve.
+  tool('pen');
+  ptr('pointerdown', [0.2, 0.2]); ptr('pointerup', [0.2, 0.2]);
+  drag([[0.5, 0.2], [0.6, 0.1]]);
+  ptr('pointerdown', [0.4, 0.5]); ptr('pointerup', [0.4, 0.5]);
+  key('Enter');
+  sel.pen = st.sel?.steps?.[0]?.add?.path ?? null;
+
+  // The brush, erasing across a box.
+  tool('rect');
+  drag([[0.1, 0.1], [0.6, 0.6]]);
+  const full = covered();
+  tool('brush');
+  drag([[0.2, 0.35], [0.3, 0.35], [0.5, 0.35]], { altKey: true });
+  sel.erase = { before: full, after: covered(), ops: ops() };
+  sel.summary = document.getElementById('sel-summary').textContent;
 
   return {
     titleblock,
@@ -277,7 +348,7 @@ const out = empty ? { boxes: [[0, 0, 0, 0], [0, 0, 0, 0]], grid: [0, 0] } : awai
       const b = document.getElementById('viewport').getBoundingClientRect();
       return [Math.round(b.width), Math.round(b.height)];
     })(),
-    boxes: [view, overlay].map((c) => {
+    boxes: [view, overlay, ui].map((c) => {
       const b = c.getBoundingClientRect();
       return [Math.round(b.left), Math.round(b.top), Math.round(b.width), Math.round(b.height)];
     }),
@@ -287,7 +358,7 @@ const out = empty ? { boxes: [[0, 0, 0, 0], [0, 0, 0, 0]], grid: [0, 0] } : awai
     layers: s.layers,
     panel,
     counter: document.getElementById('counter').textContent,
-    snippet: document.getElementById('snippet').value,
+    sel,
     error: document.getElementById('error').hidden ? null : document.getElementById('error').textContent,
     scene: document.getElementById('yaml').value.slice(0, 40),
     // The GIF encoder is the renderer's own, so it is worth knowing it still
@@ -334,7 +405,7 @@ if (!out.layers.length) bad.push('no layers');
 if (!out.scene.trim()) bad.push('opening an image left the scene box empty');
 if (out.gif.magic !== 'GIF89a') bad.push('gif export produced ' + JSON.stringify(out.gif));
 if (!/^(MP4|WEBM) /.test(out.video)) bad.push('video item is labeled ' + JSON.stringify(out.video));
-if (out.boxes[0].join() !== out.boxes[1].join()) bad.push('overlay is not over the plate: ' + JSON.stringify(out.boxes));
+if (new Set(out.boxes.map((b) => b.join())).size !== 1) bad.push('overlays are not over the plate: ' + JSON.stringify(out.boxes));
 // The plate should be the largest whole multiple of the frame that fits: not
 // left at 1x in a large viewport, and not blown past the edges of a small one.
 const scale = out.boxes[0][2] / out.grid[0];
@@ -350,8 +421,20 @@ if (!/amount: 0\.55/.test(p.param)) bad.push('the parameter edit is not in the s
 if (p.hidden !== p.added - 1) bad.push(`hiding a layer left ${p.hidden} of ${p.added} drawn`);
 if (p.rows !== p.added) bad.push(`a hidden layer should stay listed: ${p.rows} rows for ${p.added}`);
 if (out.counter !== `6/${out.frames}`) bad.push('scrub did not move the frame: ' + out.counter);
-if (!/^polygon:(\n\s+- \{ x: [\d.]+, y: [\d.]+ \}){3}$/.test(out.snippet)) {
-  bad.push('mask editor emitted: ' + JSON.stringify(out.snippet));
+const sel = out.sel;
+if (sel.ops.join() !== 'add,add,sub') bad.push('drag, Shift-drag, Alt-drag gave steps ' + JSON.stringify(sel.ops));
+if (!sel.ants) bad.push('a selection drew no marching ants');
+if (sel.undone.join() !== 'add,add') bad.push('Ctrl+Z left the selection at ' + JSON.stringify(sel.undone));
+if (!sel.sceneKept) bad.push('Ctrl+Z on the Mask tab undid a scene edit rather than a selection step');
+if (!/steps:/.test(sel.replaced ?? '')) bad.push('Apply did not set the layer mask: ' + JSON.stringify(sel.replaced));
+if (!sel.added || sel.added === sel.replaced || !/- add:\s+rect:\s+x: 0\.6/.test(sel.added)) {
+  bad.push('Apply > Add did not add to the layer mask: ' + JSON.stringify(sel.added));
+}
+if (!sel.region) bad.push('Save as region did not write regions.smoke');
+if (sel.wand.top < 0.9 || sel.wand.low) bad.push('the wand leaked across the horizon: ' + JSON.stringify(sel.wand));
+if (!/^M[^Z]*C[^Z]*Z$/.test(sel.pen ?? '')) bad.push('the pen wrote ' + JSON.stringify(sel.pen));
+if (!(sel.erase.after < sel.erase.before) || sel.erase.ops.join() !== 'add,sub') {
+  bad.push('an erase stroke did not take anything away: ' + JSON.stringify(sel.erase));
 }
 const tb = out.titleblock;
 if (tb.text.length) bad.push('title block did not write ' + JSON.stringify(tb.text));

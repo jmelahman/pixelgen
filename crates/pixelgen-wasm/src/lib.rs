@@ -7,10 +7,10 @@
 //! everything below is conversion between `Image` and the RGBA buffers a
 //! canvas speaks.
 
-use pixelgen_core::mask::{Builder, Mask, Spec};
+use pixelgen_core::mask::{self, Builder, Mask, Spec};
 use pixelgen_core::pixel::Image;
 use pixelgen_core::render::{self, Prepared};
-use pixelgen_core::scene::Scene;
+use pixelgen_core::scene::{Combine, Scene};
 use pixelgen_core::{effect, resample, starter};
 use serde::Deserialize;
 use serde_json::json;
@@ -94,6 +94,25 @@ enum Edit {
         i: usize,
         mask: Option<String>,
     },
+    /// Fold a selection into the layer's existing mask. `mask: null` is the
+    /// whole frame.
+    Combine {
+        i: usize,
+        mask: Option<String>,
+        mode: Combine,
+    },
+    /// Define or replace a named region, or remove it with `mask: null`.
+    Region {
+        name: String,
+        mask: Option<String>,
+    },
+}
+
+fn parse_spec(yaml: Option<String>) -> Result<Option<Spec>, JsError> {
+    yaml.map(|m| {
+        serde_yaml::from_str::<Spec>(&m).map_err(|e| JsError::new(&format!("parsing mask: {e}")))
+    })
+    .transpose()
 }
 
 /// One source photograph, plus whatever has been prepared from it.
@@ -170,16 +189,9 @@ impl Session {
             Edit::Disable { i, disable } => s.set_layer_disable(i, disable),
             Edit::Rename { i, name } => s.rename_layer(i, &name),
             Edit::Param { i, key, value } => s.set_layer_param(i, &key, value),
-            Edit::Mask { i, mask } => {
-                let spec = match mask {
-                    Some(m) => Some(
-                        serde_yaml::from_str::<Spec>(&m)
-                            .map_err(|e| JsError::new(&format!("parsing mask: {e}")))?,
-                    ),
-                    None => None,
-                };
-                s.set_layer_mask(i, spec)
-            }
+            Edit::Mask { i, mask } => s.set_layer_mask(i, parse_spec(mask)?),
+            Edit::Combine { i, mask, mode } => s.combine_layer_mask(i, parse_spec(mask)?, mode),
+            Edit::Region { name, mask } => s.set_region(&name, parse_spec(mask)?),
         }
         .map_err(err)?;
         s.validate().map_err(err)?;
@@ -344,13 +356,50 @@ impl Session {
     /// The same, for a mask that is not in the scene yet: the editor writes a
     /// selector, this shows what it selects, and only then does it become a
     /// layer. `spec` is a YAML mask block, as it would appear under `mask:`.
+    ///
+    /// JSON is YAML, so the editor's selection goes in as it is kept.
     pub fn preview_mask(&self, spec: &str) -> Result<Vec<u8>, JsError> {
         let p = self.prepared()?;
         let spec: Spec =
             serde_yaml::from_str(spec).map_err(|e| JsError::new(&format!("parsing mask: {e}")))?;
-        let mut b = Builder::new(&p.base, &self.scene.regions);
+        mask::validate(&self.scene.regions, &[Some(&spec)]).map_err(err)?;
+        let mut b =
+            Builder::new(&p.base, &self.scene.regions).dithered(self.scene.palette.dither > 0.0);
         let m = b.build(Some(&spec)).map_err(err)?;
         Ok(coverage(&m, p.base.w, p.base.h))
+    }
+
+    /// A YAML mask block as JSON, so the editor can load a layer's mask or a
+    /// region back into its selection and keep working on it.
+    pub fn spec_json(&self, yaml: &str) -> Result<String, JsError> {
+        let spec: Spec =
+            serde_yaml::from_str(yaml).map_err(|e| JsError::new(&format!("parsing mask: {e}")))?;
+        Ok(serde_json::to_string(&spec)?)
+    }
+
+    /// A selection (JSON or YAML) as the YAML block it would be in the scene,
+    /// for the editor's Copy button.
+    pub fn spec_yaml(&self, spec: &str) -> Result<String, JsError> {
+        let spec: Spec =
+            serde_yaml::from_str(spec).map_err(|e| JsError::new(&format!("parsing mask: {e}")))?;
+        serde_yaml::to_string(&spec).map_err(err)
+    }
+
+    /// The names of the scene's regions, as JSON.
+    pub fn regions(&self) -> Result<String, JsError> {
+        Ok(serde_json::to_string(&self.scene.regions.keys().collect::<Vec<_>>())?)
+    }
+
+    /// The color of the base cell under a normalized point, as `#rrggbb`:
+    /// what a magic wand clicked there records.
+    pub fn sample(&self, x: f32, y: f32) -> Result<String, JsError> {
+        Ok(mask::sample(&self.prepared()?.base, x, y))
+    }
+
+    /// Anchors the magnetic lasso at a normalized point. The expensive part
+    /// happens here, once per anchor; following the pointer is cheap.
+    pub fn livewire(&self, x: f32, y: f32) -> Result<LiveWire, JsError> {
+        Ok(LiveWire(mask::LiveWire::new(&self.prepared()?.base, x, y)))
     }
 
     /// The scene as the renderer understands it, re-serialized. The editor
@@ -369,6 +418,19 @@ impl Session {
 
     fn prepared(&self) -> Result<&Prepared, JsError> {
         self.prep.as_ref().ok_or_else(|| JsError::new("no scene set yet"))
+    }
+}
+
+/// One magnetic-lasso anchor's paths, from [`Session::livewire`].
+#[wasm_bindgen]
+pub struct LiveWire(mask::LiveWire);
+
+#[wasm_bindgen]
+impl LiveWire {
+    /// The path from the anchor to a normalized point that follows the
+    /// strongest edges between them, as flat `x, y` pairs.
+    pub fn path_to(&self, x: f32, y: f32) -> Vec<f32> {
+        self.0.path_to(x, y).into_iter().flat_map(|(x, y)| [x, y]).collect()
     }
 }
 

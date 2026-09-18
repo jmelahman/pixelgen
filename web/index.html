@@ -37,6 +37,10 @@
       <!-- Sits exactly over the view, at grid resolution, for mask overlays
            and for the outline being drawn. -->
       <canvas id="overlay" width="16" height="16"></canvas>
+      <!-- The same box again at screen resolution, for what has to stay sharp
+           over a grid of big cells: marching ants, pen handles, the brush. It
+           is also what the selection tools take the pointer from. -->
+      <canvas id="ui" width="16" height="16"></canvas>
 
       <!-- Nothing is uploaded; the image is decoded to a canvas and handed
            straight to the renderer compiled to wasm. Dropping one anywhere on
@@ -158,37 +162,120 @@
     <div class="tab" data-tab="draw" hidden>
       <div class="help" hidden>
         <p>
-          Click around a region on the plate. <b>Apply</b> makes it the mask of
-          the layer selected in the Layers tab; <b>Copy</b> takes the selector
-          to paste into <code>regions:</code> instead. Coordinates are fractions
-          of the frame, so they survive a change of <code>width</code>.
+          Select a region on the plate, then <b>Apply</b> it to the layer
+          selected in the Layers tab, or save it as a named region. Hold
+          <kbd>Shift</kbd> to add to the selection, <kbd>Alt</kbd> to take
+          away from it, and both to keep only where they overlap &mdash; or
+          set the mode with the buttons.
         </p>
         <p>
-          An outline is a last resort. A selector keyed on the image itself cuts
-          the exact silhouette of whatever stands in front of the region &mdash;
-          a figure, a plant, the window frame &mdash; and keeps doing it when you
-          change the grid or swap the photograph.
+          <b>Marquee</b> (<kbd>M</kbd>) drags a box or an oval.
+          <b>Lasso</b> (<kbd>L</kbd>) draws freehand; <b>Polygon</b> places a
+          corner per click; <b>Magnetic</b> finds the edge between your clicks
+          by itself. <b>Wand</b> (<kbd>W</kbd>) takes the area of one color
+          around the click, and <b>Range</b> that color everywhere.
+          <b>Pen</b> (<kbd>P</kbd>) places a corner per click; drag to
+          curve. <b>Brush</b> (<kbd>B</kbd>) paints, and erases with
+          <kbd>Alt</kbd>. <kbd>Enter</kbd> closes an outline and
+          <kbd>Esc</kbd> abandons it.
         </p>
         <p>
-          That is what stops rain falling indoors: not a tighter rectangle, but
-          <code>chroma</code>, which reads cool daylight apart from a warm
-          interior.
+          What is kept is the selector, not the pixels it caught: a wand
+          remembers where it was clicked and on what color, and every outline
+          is in fractions of the frame, so all of it survives a change of
+          <code>width</code> or <code>palette</code>.
+        </p>
+        <p>
+          An outline is a last resort. A selector keyed on the image itself
+          &mdash; the wand, the range, or <code>chroma</code> in the Scene tab
+          &mdash; cuts the exact silhouette of whatever stands in front of the
+          region, and keeps doing it when you change the grid.
         </p>
       </div>
 
-      <div class="shapes">
-        <button id="shape-polygon" class="ctl" aria-pressed="true">Polygon</button>
-        <button id="shape-rect" class="ctl" aria-pressed="false">Rectangle</button>
-        <button id="shape-ellipse" class="ctl" aria-pressed="false">Ellipse</button>
+      <div class="tools" role="toolbar" aria-label="Selection tools">
+        <button class="ctl" data-tool="rect" data-key="m" aria-pressed="true" title="Rectangle marquee (M)">Rect</button>
+        <button class="ctl" data-tool="ellipse" data-key="m" aria-pressed="false" title="Elliptical marquee (M)">Oval</button>
+        <button class="ctl" data-tool="lasso" data-key="l" aria-pressed="false" title="Lasso (L)">Lasso</button>
+        <button class="ctl" data-tool="polygon" data-key="l" aria-pressed="false" title="Polygonal lasso (L)">Polygon</button>
+        <button class="ctl" data-tool="magnetic" data-key="l" aria-pressed="false" title="Magnetic lasso (L)">Magnetic</button>
+        <button class="ctl" data-tool="wand" data-key="w" aria-pressed="false" title="Magic wand (W)">Wand</button>
+        <button class="ctl" data-tool="range" data-key="w" aria-pressed="false" title="Color range (W)">Range</button>
+        <button class="ctl" data-tool="pen" data-key="p" aria-pressed="false" title="Pen (P)">Pen</button>
+        <button class="ctl" data-tool="brush" data-key="b" aria-pressed="false" title="Brush (B)">Brush</button>
+      </div>
+
+      <div class="options">
+        <div class="modes" role="group" aria-label="Selection mode">
+          <button class="ctl" data-mode="new" aria-pressed="true" title="Replace the selection">New</button>
+          <button class="ctl" data-mode="add" aria-pressed="false" title="Add to the selection (Shift)">Add</button>
+          <button class="ctl" data-mode="sub" aria-pressed="false" title="Subtract from the selection (Alt)">Sub</button>
+          <button class="ctl" data-mode="and" aria-pressed="false" title="Intersect with the selection (Shift+Alt)">And</button>
+        </div>
+        <label class="opt" data-for="wand range">Tolerance
+          <input type="range" id="opt-tolerance" min="0.01" max="0.6" step="0.01" value="0.12">
+          <output for="opt-tolerance"></output></label>
+        <label class="check" data-for="wand"><input type="checkbox" id="opt-contiguous" checked> Contiguous</label>
+        <label class="opt" data-for="brush">Size
+          <input type="range" id="opt-radius" min="0.5" max="24" step="0.5" value="3">
+          <output for="opt-radius"></output></label>
+        <label class="opt" data-for="brush">Hardness
+          <input type="range" id="opt-hardness" min="0" max="1" step="0.05" value="1">
+          <output for="opt-hardness"></output></label>
+        <button class="ctl" id="pen-reopen" data-for="pen" type="button"
+                title="Take the last pen path back out of the selection to edit it">Edit last path</button>
+      </div>
+
+      <div class="toolbar">
+        <details class="menu down" id="select-menu">
+          <summary class="ctl">Select</summary>
+          <div>
+            <button id="sel-all" type="button">All <small>Ctrl+A</small></button>
+            <button id="sel-none" type="button">Deselect <small>Ctrl+D</small></button>
+            <button id="sel-invert" type="button">Inverse <small>Shift+F7</small></button>
+            <button id="sel-layer" type="button">Layer mask <small id="sel-layer-name"></small></button>
+            <div id="sel-regions"></div>
+          </div>
+        </details>
         <span class="spacer"></span>
-        <button id="clear" class="ctl">Clear</button>
+        <output id="sel-summary"></output>
       </div>
 
-      <textarea id="snippet" spellcheck="false" readonly aria-label="Selector"></textarea>
-      <div class="shapes">
-        <button id="apply-mask" class="ctl" type="button" disabled>Apply</button>
-        <button id="copy" class="ctl">Copy</button>
+      <div class="refine">
+        <label for="refine-grow">Grow</label>
+        <input type="range" id="refine-grow" min="-8" max="8" step="0.5" value="0">
+        <output for="refine-grow">0</output>
+        <label for="refine-smooth">Smooth</label>
+        <input type="range" id="refine-smooth" min="0" max="8" step="1" value="0">
+        <output for="refine-smooth">0</output>
+        <label for="refine-feather">Feather</label>
+        <input type="range" id="refine-feather" min="0" max="8" step="0.5" value="0">
+        <output for="refine-feather">0</output>
       </div>
+
+      <textarea id="snippet" spellcheck="false" readonly aria-label="Selection as YAML"></textarea>
+
+      <div class="shapes">
+        <div class="split">
+          <button id="apply-mask" class="ctl" type="button" disabled>Apply</button>
+          <details class="menu" id="apply-menu">
+            <summary class="ctl" aria-label="Apply how"></summary>
+            <div>
+              <button type="button" data-combine="replace">Replace <small>the layer&rsquo;s mask</small></button>
+              <button type="button" data-combine="add">Add <small>to the mask</small></button>
+              <button type="button" data-combine="sub">Subtract <small>from the mask</small></button>
+              <button type="button" data-combine="and">Intersect <small>with the mask</small></button>
+            </div>
+          </details>
+        </div>
+        <span class="spacer"></span>
+        <button id="copy" class="ctl" type="button">Copy</button>
+      </div>
+
+      <form class="shapes" id="region-form">
+        <input id="region-name" placeholder="region name" aria-label="Region name" autocomplete="off">
+        <button id="save-region" class="ctl" type="submit" disabled>Save as region</button>
+      </form>
     </div>
 
     <div class="tab" data-tab="scene" hidden>

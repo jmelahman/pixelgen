@@ -5,13 +5,22 @@
 //! in normalized coordinates or as a property of the base image - bright
 //! pixels, pixels near a color, pixels cooler than their surroundings.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
 use crate::palette::parse_hex;
 use crate::pixel::{luma, smooth_step, Image};
+
+mod fill;
+pub mod livewire;
+mod morph;
+pub mod path;
+mod wand;
+
+pub use livewire::LiveWire;
+pub use wand::{sample, Wand};
 
 /// Coverage in `[0,1]` per pixel.
 ///
@@ -71,8 +80,9 @@ impl Mask {
     }
 }
 
-/// The serialized form of a region. Exactly one selector should be set, or
-/// `all`/`any` for composition; modifiers apply to the result.
+/// The serialized form of a region. At most one selector may be set - or one
+/// of `all`/`any`/`steps` for composition - and modifiers apply to the result.
+/// Setting none selects the whole frame.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Spec {
@@ -98,14 +108,38 @@ pub struct Spec {
     pub chroma: Option<Chroma>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub band: Option<Band>,
+    /// An outline as SVG path data, filled even-odd: what the lasso and pen
+    /// tools write. See [`path::Path::parse`] for the commands it takes.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub path: String,
+    /// Brush strokes: coverage near a path rather than inside it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stroke: Option<Stroke>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wand: Option<Wand>,
 
     /// `all` intersects (minimum coverage), `any` unions (maximum).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub all: Vec<Spec>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub any: Vec<Spec>,
+    /// A selection built up the way an image editor builds one: each step
+    /// adds to, takes from, or intersects with everything before it.
+    ///
+    /// The same result as nesting `any` and `all`, but flat - alternating
+    /// between adding and subtracting would otherwise go one level deeper
+    /// every time.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub steps: Vec<Step>,
 
     /// Modifiers, applied in this order.
+    ///
+    /// Grows the region by this many cells, or shrinks it when negative.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub grow: f32,
+    /// Rounds corners and drops specks narrower than about this many cells.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub smooth: f32,
     #[serde(default, skip_serializing_if = "is_false")]
     pub invert: bool,
     /// Blur radius in pixel-grid cells.
@@ -121,6 +155,93 @@ fn is_false(b: &bool) -> bool {
 }
 fn is_zero(v: &f32) -> bool {
     *v == 0.0
+}
+fn is_one(v: &f32) -> bool {
+    *v == 1.0
+}
+
+/// One step of a `steps` selection. Exactly one of the three is set.
+///
+/// A struct of options rather than an enum so that it is written as plain
+/// `add:` keys: an enum would come out of the YAML writer as a `!add` tag.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Step {
+    /// Union: the maximum of the two coverages.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub add: Option<Spec>,
+    /// Takes this region away from what came before.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sub: Option<Spec>,
+    /// Intersection: the minimum.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub and: Option<Spec>,
+}
+
+impl Step {
+    pub fn add(s: Spec) -> Step {
+        Step { add: Some(s), ..Step::default() }
+    }
+    pub fn sub(s: Spec) -> Step {
+        Step { sub: Some(s), ..Step::default() }
+    }
+    pub fn and(s: Spec) -> Step {
+        Step { and: Some(s), ..Step::default() }
+    }
+
+    /// The step's operand, and which operation it is.
+    pub fn op(&self) -> Option<(&'static str, &Spec)> {
+        match (&self.add, &self.sub, &self.and) {
+            (Some(s), None, None) => Some(("add", s)),
+            (None, Some(s), None) => Some(("sub", s)),
+            (None, None, Some(s)) => Some(("and", s)),
+            _ => None,
+        }
+    }
+}
+
+/// Brush strokes along SVG path data. `radius` is a fraction of the frame's
+/// width, so a stroke keeps its size relative to the picture when the grid
+/// changes, the same as every other coordinate here.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Stroke {
+    pub d: String,
+    pub radius: f32,
+    /// 1 is a hard edge; lower softens the brush from its rim inward.
+    #[serde(skip_serializing_if = "is_one")]
+    pub hardness: f32,
+}
+
+impl Default for Stroke {
+    fn default() -> Self {
+        Stroke { d: String::new(), radius: 0.01, hardness: 1.0 }
+    }
+}
+
+impl Spec {
+    /// Whether any modifier is set - which decides whether another step can be
+    /// appended to this spec's own `steps` without changing what they apply to.
+    pub fn has_modifiers(&self) -> bool {
+        self.grow != 0.0
+            || self.smooth != 0.0
+            || self.invert
+            || self.feather != 0.0
+            || (self.gain != 0.0 && self.gain != 1.0)
+    }
+
+    /// Whether this spec selects the whole frame by its structure alone: no
+    /// selector and no modifier, or a single `add` of such a spec.
+    pub fn is_full_frame(&self) -> bool {
+        if self.has_modifiers() || !selectors(self).iter().all(|s| *s == "steps") {
+            return false;
+        }
+        match self.steps.as_slice() {
+            [] => true,
+            [s] => s.add.as_ref().is_some_and(Spec::is_full_frame),
+            _ => false,
+        }
+    }
 }
 
 /// Normalized `[0,1]` coordinates, so a scene file survives a change of width
@@ -227,15 +348,25 @@ impl Default for Band {
     }
 }
 
-/// The named regions a `ref` selector can resolve.
-pub type Registry = HashMap<String, Spec>;
+/// The named regions a `ref` selector can resolve. Ordered, so a scene writes
+/// its regions back out in the same order every time.
+pub type Registry = BTreeMap<String, Spec>;
 
 #[derive(Debug)]
 pub enum Error {
     UnknownRegion(String),
     Cycle(Vec<String>),
-    RefWithSelector { name: String, selector: &'static str },
+    RefWithSelector {
+        name: String,
+        selector: &'static str,
+    },
+    /// Two selectors in one spec: one of them would be silently ignored.
+    MultipleSelectors(&'static str, &'static str),
     BadColor(String),
+    BadPath(String),
+    /// A `steps` entry that sets none or several of `add`/`sub`/`and`, or a
+    /// first step that is not an `add`.
+    BadStep(String),
 }
 
 impl fmt::Display for Error {
@@ -247,7 +378,14 @@ impl fmt::Display for Error {
                 f,
                 "region reference {name:?} cannot also set {selector:?}; wrap both in an \"all\" instead"
             ),
+            Error::MultipleSelectors(a, b) => write!(
+                f,
+                "a mask can have only one selector, but this one sets both {a:?} and {b:?}; \
+                 combine them with \"all\", \"any\" or \"steps\""
+            ),
             Error::BadColor(s) => write!(f, "color selector: invalid hex color {s:?}"),
+            Error::BadPath(m) => f.write_str(m),
+            Error::BadStep(m) => f.write_str(m),
         }
     }
 }
@@ -259,6 +397,8 @@ impl std::error::Error for Error {}
 pub struct Builder<'a> {
     pub base: &'a Image,
     pub regions: &'a Registry,
+    /// Whether the base was dithered, which the wand reads through.
+    pub dither: bool,
     cache: HashMap<String, Mask>,
 }
 
@@ -266,12 +406,17 @@ static EMPTY_REGISTRY: std::sync::OnceLock<Registry> = std::sync::OnceLock::new(
 
 impl<'a> Builder<'a> {
     pub fn new(base: &'a Image, regions: &'a Registry) -> Self {
-        Builder { base, regions, cache: HashMap::new() }
+        Builder { base, regions, dither: false, cache: HashMap::new() }
     }
 
     /// A builder for specs that contain no `ref`.
     pub fn plain(base: &'a Image) -> Self {
         Builder::new(base, EMPTY_REGISTRY.get_or_init(Registry::new))
+    }
+
+    pub fn dithered(mut self, dither: bool) -> Self {
+        self.dither = dither;
+        self
     }
 
     pub fn build(&mut self, spec: Option<&Spec>) -> Result<Mask, Error> {
@@ -285,6 +430,12 @@ impl<'a> Builder<'a> {
     /// a region that refers to itself be reported instead of overflowing.
     fn build_inner(&mut self, s: &Spec, stack: &mut Vec<String>) -> Result<Mask, Error> {
         let mut m = self.shape(s, stack)?;
+        if s.grow != 0.0 {
+            m = morph::grow(&m, s.grow);
+        }
+        if s.smooth > 0.0 {
+            m = morph::smooth(&m, s.smooth);
+        }
         if s.invert {
             for v in m.a.iter_mut() {
                 *v = 1.0 - *v;
@@ -326,6 +477,21 @@ impl<'a> Builder<'a> {
             }
             return Ok(m);
         }
+        if !s.steps.is_empty() {
+            let mut m = Mask::new(w, h);
+            for (i, step) in s.steps.iter().enumerate() {
+                let (op, sub) = step.op().ok_or_else(|| bad_step(i))?;
+                let x = self.build_inner(sub, stack)?;
+                for (v, x) in m.a.iter_mut().zip(&x.a) {
+                    *v = match op {
+                        "add" => v.max(*x),
+                        "sub" => v.min(1.0 - *x),
+                        _ => v.min(*x),
+                    };
+                }
+            }
+            return Ok(m);
+        }
         if let Some(r) = &s.rect {
             return Ok(from_rect(*r, w, h));
         }
@@ -334,6 +500,15 @@ impl<'a> Builder<'a> {
         }
         if !s.polygon.is_empty() {
             return Ok(from_polygon(&s.polygon, w, h));
+        }
+        if !s.path.is_empty() {
+            return from_path(&s.path, w, h);
+        }
+        if let Some(st) = &s.stroke {
+            return from_stroke(st, w, h);
+        }
+        if let Some(wd) = &s.wand {
+            return wand::build(wd, self.base, self.dither);
         }
         if let Some(r) = &s.luma {
             return Ok(from_luma(*r, self.base));
@@ -372,14 +547,17 @@ impl<'a> Builder<'a> {
     }
 }
 
-/// Reports unresolvable references and reference cycles. It is separate from
-/// building so a scene file can be rejected at load time, before an image has
-/// been read, rather than partway through a render.
+fn bad_step(i: usize) -> Error {
+    Error::BadStep(format!("mask step {i} must set exactly one of \"add\", \"sub\" or \"and\""))
+}
+
+/// Reports unresolvable references, reference cycles, and anything a spec says
+/// that building would silently ignore or fail on partway through. It is
+/// separate from building so a scene file can be rejected at load time, before
+/// an image has been read, rather than partway through a render.
 pub fn validate(regions: &Registry, specs: &[Option<&Spec>]) -> Result<(), Error> {
-    let mut names: Vec<&String> = regions.keys().collect();
-    names.sort(); // deterministic error for a scene with several faults
-    for name in names {
-        walk(regions, &regions[name], &mut vec![name.clone()])?;
+    for (name, spec) in regions {
+        walk(regions, spec, &mut vec![name.clone()])?;
     }
     for s in specs.iter().flatten() {
         walk(regions, s, &mut Vec::new())?;
@@ -388,8 +566,9 @@ pub fn validate(regions: &Registry, specs: &[Option<&Spec>]) -> Result<(), Error
 }
 
 fn walk(regions: &Registry, s: &Spec, stack: &mut Vec<String>) -> Result<(), Error> {
+    let set = selectors(s);
     if !s.r#ref.is_empty() {
-        if let Some(sel) = conflict(s) {
+        if let Some(sel) = set.iter().find(|s| **s != "ref") {
             return Err(Error::RefWithSelector { name: s.r#ref.clone(), selector: sel });
         }
         if stack.contains(&s.r#ref) {
@@ -402,36 +581,73 @@ fn walk(regions: &Registry, s: &Spec, stack: &mut Vec<String>) -> Result<(), Err
         walk(regions, sub, stack)?;
         stack.pop();
     }
-    for sub in s.all.iter().chain(s.any.iter()) {
+    if let [a, b, ..] = set.as_slice() {
+        return Err(Error::MultipleSelectors(a, b));
+    }
+    if !s.path.is_empty() {
+        path::Path::parse(&s.path).map_err(|e| Error::BadPath(e.to_string()))?;
+    }
+    if let Some(st) = &s.stroke {
+        path::Path::parse(&st.d).map_err(|e| Error::BadPath(format!("stroke: {e}")))?;
+    }
+    for (i, step) in s.steps.iter().enumerate() {
+        match step.op() {
+            None => return Err(bad_step(i)),
+            Some((op, _)) if i == 0 && op != "add" => {
+                return Err(Error::BadStep(format!(
+                    "the first mask step must be \"add\", not {op:?}: there is nothing yet to \
+                     take from or intersect with"
+                )));
+            }
+            _ => {}
+        }
+    }
+    let children = s.steps.iter().filter_map(|st| st.op().map(|(_, sub)| sub));
+    for sub in s.all.iter().chain(s.any.iter()).chain(children) {
         walk(regions, sub, stack)?;
     }
     Ok(())
 }
 
-/// Names a selector set alongside `ref`, which building would silently ignore.
-/// Modifiers are not conflicts: they are meant to apply to the region.
-fn conflict(s: &Spec) -> Option<&'static str> {
-    if s.rect.is_some() {
-        Some("rect")
-    } else if s.ellipse.is_some() {
-        Some("ellipse")
-    } else if !s.polygon.is_empty() {
-        Some("polygon")
-    } else if s.luma.is_some() {
-        Some("luma")
-    } else if s.color.is_some() {
-        Some("color")
-    } else if s.chroma.is_some() {
-        Some("chroma")
-    } else if s.band.is_some() {
-        Some("band")
-    } else if !s.all.is_empty() {
-        Some("all")
-    } else if !s.any.is_empty() {
-        Some("any")
-    } else {
-        None
-    }
+/// Every selector a spec sets, in the order `shape` would try them. More than
+/// one is a mistake: all but the first would be silently ignored. Modifiers
+/// are not selectors; they are meant to apply to whichever one is set.
+fn selectors(s: &Spec) -> Vec<&'static str> {
+    [
+        ("ref", !s.r#ref.is_empty()),
+        ("all", !s.all.is_empty()),
+        ("any", !s.any.is_empty()),
+        ("steps", !s.steps.is_empty()),
+        ("rect", s.rect.is_some()),
+        ("ellipse", s.ellipse.is_some()),
+        ("polygon", !s.polygon.is_empty()),
+        ("path", !s.path.is_empty()),
+        ("stroke", s.stroke.is_some()),
+        ("wand", s.wand.is_some()),
+        ("luma", s.luma.is_some()),
+        ("color", s.color.is_some()),
+        ("chroma", s.chroma.is_some()),
+        ("band", s.band.is_some()),
+    ]
+    .into_iter()
+    .filter_map(|(k, on)| on.then_some(k))
+    .collect()
+}
+
+/// Curves are split until they are within this many cells of straight.
+const FLATNESS: f32 = 0.25;
+
+fn from_path(d: &str, w: usize, h: usize) -> Result<Mask, Error> {
+    let p = path::Path::parse(d).map_err(|e| Error::BadPath(e.to_string()))?;
+    let rings: Vec<_> =
+        p.flatten(w as f32, h as f32, FLATNESS).into_iter().map(|l| l.pts).collect();
+    Ok(fill::polygons(&rings, w, h))
+}
+
+fn from_stroke(st: &Stroke, w: usize, h: usize) -> Result<Mask, Error> {
+    let p = path::Path::parse(&st.d).map_err(|e| Error::BadPath(format!("stroke: {e}")))?;
+    let lines = p.flatten(w as f32, h as f32, FLATNESS);
+    Ok(fill::strokes(&lines, st.radius * w as f32, st.hardness, w, h))
 }
 
 fn from_rect(r: Rect, w: usize, h: usize) -> Mask {
@@ -473,35 +689,8 @@ fn from_ellipse(r: Rect, w: usize, h: usize) -> Mask {
 }
 
 fn from_polygon(pts: &[Point], w: usize, h: usize) -> Mask {
-    let mut m = Mask::new(w, h);
-    let n = pts.len();
-    if n < 3 {
-        return m;
-    }
-    let px: Vec<f32> = pts.iter().map(|p| p.x * w as f32).collect();
-    let py: Vec<f32> = pts.iter().map(|p| p.y * h as f32).collect();
-    for y in 0..h {
-        let fy = y as f32 + 0.5;
-        for x in 0..w {
-            let fx = x as f32 + 0.5;
-            let mut inside = false;
-            let mut j = n - 1;
-            for i in 0..n {
-                // Standard even-odd crossing test.
-                if (py[i] > fy) != (py[j] > fy) {
-                    let xi = px[i] + (fy - py[i]) / (py[j] - py[i]) * (px[j] - px[i]);
-                    if fx < xi {
-                        inside = !inside;
-                    }
-                }
-                j = i;
-            }
-            if inside {
-                m.a[y * w + x] = 1.0;
-            }
-        }
-    }
-    m
+    let ring: Vec<_> = pts.iter().map(|p| (p.x * w as f32, p.y * h as f32)).collect();
+    fill::polygons(&[ring], w, h)
 }
 
 fn from_luma(r: Range, base: &Image) -> Mask {
@@ -584,7 +773,7 @@ fn blur(m: &Mask, radius: f32) -> Mask {
     cur
 }
 
-fn box_pass(m: &Mask, r: i32, horizontal: bool) -> Mask {
+pub(crate) fn box_pass(m: &Mask, r: i32, horizontal: bool) -> Mask {
     let mut out = Mask::new(m.w, m.h);
     for y in 0..m.h {
         for x in 0..m.w {

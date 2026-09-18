@@ -4,12 +4,17 @@
 
 import init, { Session, effects } from './pkg/pixelgen_wasm.js';
 import { setLayerDisabled, setScalar } from './scene-text.js';
+import {
+  combine, hasModifiers, outline, parsePen, penD, penPoints, polyD, simplify, withStep,
+} from './select.js';
 
 const el = (id) => document.getElementById(id);
 const view = el('view');
 const overlay = el('overlay');
 const vctx = view.getContext('2d');
 const octx = overlay.getContext('2d');
+const ui = el('ui');
+const uctx = ui.getContext('2d');
 
 const state = {
   session: null,
@@ -25,10 +30,23 @@ const state = {
   /** The scene index of the row being dragged. */
   drag: null,
   tab: 'layers',
-  shape: 'polygon',
-  /** What the outline being drawn catches, as coverage, or null. */
-  preview: null,
-  points: [],
+  /** The selection being made in the Mask tab, as a mask spec, or null. */
+  sel: null,
+  /** What `sel` catches, as 8-bit coverage over the grid. */
+  selCov: null,
+  /** The selection's own history, as JSON. */
+  selUndo: [],
+  selRedo: [],
+  tool: 'rect',
+  mode: 'new',
+  /** The shape the current tool is in the middle of, or null. */
+  draft: null,
+  /** The selection as it would be with the draft folded in, or null. */
+  draftCov: null,
+  /** The selection's outline in cell edges, for the ants. */
+  runs: [],
+  /** The pointer over the plate, normalized, or null. */
+  hover: null,
   name: 'image',
 };
 
@@ -45,6 +63,8 @@ async function open(file) {
   const data = cx.getImageData(0, 0, bitmap.width, bitmap.height).data;
 
   stop();
+  // A live-wire belongs to the session it was made in.
+  cancelDraft();
   state.session = new Session(data, bitmap.width, bitmap.height);
   state.name = file.name || 'image';
   say(`${file.name || 'image'} - ${bitmap.width}x${bitmap.height}`);
@@ -55,9 +75,8 @@ async function open(file) {
   // belonged to the old scene and goes with it.
   state.selected = null;
   state.frame = 0;
-  state.points = [];
+  resetSel();
   starter();
-  emit();
 }
 
 // Replaces the scene with the one this photograph suggests.
@@ -135,6 +154,9 @@ function refresh() {
 
   swatches(s.palette);
   layerPanel();
+  regionMenu();
+  // The selection is evaluated on the grid, which may just have changed.
+  selChanged();
 
   titleblock(s);
   // The timer was set for the rate the loop had when Play was pressed.
@@ -292,10 +314,14 @@ function fit() {
   const room = { w: box.width - 32, h: box.height - 32 };
   const exact = Math.min(room.w / s.width, room.h / s.height);
   const scale = exact >= 1 ? Math.floor(exact) : exact;
-  for (const c of [view, overlay]) {
+  for (const c of [view, overlay, ui]) {
     c.style.width = `${s.width * scale}px`;
     c.style.height = `${s.height * scale}px`;
   }
+  // The ants and handles are drawn at the screen's own resolution.
+  ui.width = Math.round(s.width * scale * devicePixelRatio);
+  ui.height = Math.round(s.height * scale * devicePixelRatio);
+  drawUi();
 }
 
 // The plate is sized against the viewport, so a resize has to re-fit it.
@@ -359,9 +385,16 @@ function undo() {
 }
 
 document.addEventListener('keydown', (e) => {
-  if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.key.toLowerCase() !== 'z') return;
+  if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'z') return;
   // Text fields keep their own undo; this one steps back through panel edits.
   if (e.target.closest('input, textarea, select')) return;
+  // While a selection is being made, its own steps come first: Apply is the
+  // only thing that reaches the scene from the Mask tab.
+  if (state.tab === 'draw' && selHistory(e.shiftKey)) {
+    e.preventDefault();
+    return;
+  }
+  if (e.shiftKey) return;
   e.preventDefault();
   undo();
 });
@@ -620,7 +653,8 @@ function maskSummary(yaml) {
     const [k, v] = l.split(/:\s*/);
     if (k === 'ref') return `ref: ${v}`;
     if (k === 'invert') return 'inverted';
-    if (k === 'feather' || k === 'gain') return `${k} ${v}`;
+    if (['feather', 'gain', 'grow', 'smooth'].includes(k)) return `${k} ${v}`;
+    if (k === 'steps') return `steps(${stepSummary(lines)})`;
     if (k === 'polygon') return `polygon · ${lines.filter((x) => x.startsWith('- x:')).length} pts`;
     // A combinator names its members, which sit one level in as `- key:`.
     if (k === 'all' || k === 'any') {
@@ -632,15 +666,27 @@ function maskSummary(yaml) {
   return top.map(kind).join(' · ');
 }
 
+// The operands of a top-level `steps` list, joined by what each step does.
+function stepSummary(lines) {
+  const out = [];
+  lines.forEach((l, i) => {
+    const m = l.match(/^- (add|sub|and):\s*(.*)$/);
+    if (!m) return;
+    const what = m[2] === '{}' ? 'all' : m[2] || (lines[i + 1] ?? '').trim().split(':')[0] || '?';
+    out.push(out.length ? `${{ add: '+', sub: '\u2212', and: '\u2229' }[m[1]]} ${what}` : what);
+  });
+  return out.join(' ');
+}
+
 el('mask-show').addEventListener('click', () => {
   el('showmask').checked = !el('showmask').checked;
   properties();
   drawOverlay();
 });
 
+// Takes the layer's mask into the Mask tab as the selection, to work on.
 el('mask-edit').addEventListener('click', () => {
-  state.points = [];
-  emit();
+  loadLayerMask();
   showTab('draw');
 });
 
@@ -668,20 +714,15 @@ function draw() {
 function drawOverlay() {
   octx.clearRect(0, 0, overlay.width, overlay.height);
   if (!state.session?.frames) return;
-  // While drawing, what the outline catches is the thing being looked at -
-  // never a selected layer's own mask, even before the outline has enough
-  // points to preview.
+  // While selecting, the selection is the thing being looked at - never a
+  // selected layer's own mask.
   if (state.tab === 'draw') {
-    if (state.preview) paintCoverage(state.preview);
-    else drawShape();
+    const cov = state.draftCov ?? state.selCov;
+    if (cov) paintCoverage(cov, 0.35);
     return;
   }
   const d = selectedDrawn();
-  if (d !== null && el('showmask').checked) {
-    paintCoverage(state.session.layer_mask(d), 0.55);
-    return;
-  }
-  drawShape();
+  if (d !== null && el('showmask').checked) paintCoverage(state.session.layer_mask(d), 0.55);
 }
 
 // The one saturated thing the page adds to the image, so it is the page's own
@@ -746,8 +787,10 @@ function showTab(name) {
     t.hidden = t.dataset.tab !== name;
   });
   el('viewport').classList.toggle('drawing', name === 'draw');
+  if (name !== 'draw') cancelDraft();
   maskTarget();
   drawOverlay();
+  drawUi();
 }
 tabs.forEach((b) => b.addEventListener('click', () => showTab(b.dataset.tab)));
 
@@ -767,107 +810,816 @@ try {
   if (localStorage.getItem('pixelgen.help') === '1') help(true);
 } catch { /* as above */ }
 
-// ---------------------------------------------------------------- mask drawing
+// ---------------------------------------------------------------- selection
 
-for (const shape of ['polygon', 'rect', 'ellipse']) {
-  el(`shape-${shape}`).addEventListener('click', () => {
-    state.shape = shape;
-    state.points = [];
-    ['polygon', 'rect', 'ellipse'].forEach((s) => el(`shape-${s}`).setAttribute('aria-pressed', s === shape));
-    emit();
-    drawOverlay();
+// The selection is a mask spec like any other, kept as the JSON the core
+// reads, and null for nothing selected - never `{}`, which is the whole frame.
+// It has its own history while it is being made: a dozen lasso strokes are
+// not a dozen scene edits, and only Apply or Save writes to the scene.
+
+const TOOLS = ['rect', 'ellipse', 'lasso', 'polygon', 'magnetic', 'wand', 'range', 'pen', 'brush'];
+const r4 = (v) => Math.round(v * 1e4) / 1e4;
+let antsOffset = 0;
+
+function setSel(sel) {
+  state.selUndo.push(JSON.stringify(state.sel));
+  state.selRedo = [];
+  state.sel = sel;
+  selChanged();
+}
+
+// Steps back or forward through the selection. Returns whether there was
+// anything to step through, so the scene's own undo can have the key if not.
+function selHistory(redo) {
+  if (state.draft && !redo) {
+    cancelDraft();
+    return true;
+  }
+  const [from, to] = redo ? [state.selRedo, state.selUndo] : [state.selUndo, state.selRedo];
+  if (!from.length) return false;
+  to.push(JSON.stringify(state.sel));
+  state.sel = JSON.parse(from.pop());
+  selChanged();
+  return true;
+}
+
+function resetSel() {
+  cancelDraft();
+  state.sel = null;
+  state.selCov = null;
+  state.selUndo = [];
+  state.selRedo = [];
+}
+
+// Everything that follows from the selection having changed, or from the grid
+// it is evaluated on having changed under it.
+function selChanged() {
+  state.selCov = null;
+  if (state.sel && state.session?.width) {
+    try {
+      state.selCov = state.session.preview_mask(JSON.stringify(state.sel));
+    } catch (e) {
+      // A region the selection refers to may have gone with an undo.
+      fail(e);
+    }
+  }
+  let yaml = '';
+  if (state.sel) {
+    try {
+      yaml = state.session.spec_yaml(JSON.stringify(state.sel));
+    } catch { /* reported above */ }
+  }
+  el('snippet').value = yaml;
+  const cov = state.selCov;
+  let share = 0;
+  if (cov) for (const v of cov) share += v;
+  el('sel-summary').textContent = state.sel
+    ? `${maskSummary(yaml)} · ${cov ? Math.round((share / 255 / cov.length) * 100) : 0}%`
+    : 'Nothing selected';
+  for (const key of ['grow', 'smooth', 'feather']) {
+    const input = el(`refine-${key}`);
+    input.disabled = !state.sel;
+    input.value = state.sel?.[key] ?? 0;
+    input.nextElementSibling.value = input.value;
+  }
+  el('pen-reopen').disabled = !lastPen();
+  maskTarget();
+  showSel();
+}
+
+// Repaints the tint and the ants for whatever is on screen: the selection, or
+// the selection as the shape being drawn would leave it.
+function showSel() {
+  const s = state.session;
+  const cov = state.draftCov ?? state.selCov;
+  state.runs = cov && s?.width ? outline(cov, s.width, s.height) : [];
+  drawOverlay();
+  drawUi();
+}
+
+// Folds one more shape into the selection, the way the mode says.
+function commit(op, operand) {
+  const next = withStep(state.sel, op, operand);
+  state.draft = null;
+  state.draftCov = null;
+  if (next === state.sel) return showSel();
+  setSel(next);
+}
+
+function cancelDraft() {
+  state.draft?.wire?.free();
+  state.draft = null;
+  state.draftCov = null;
+  showSel();
+}
+
+// What a pointer press does to the selection: the modifier keys, as
+// Photoshop has them, or the sticky mode for a window manager that takes
+// Alt-drag for itself.
+function modeFor(e) {
+  if (e.shiftKey && e.altKey) return 'and';
+  if (e.shiftKey) return 'add';
+  if (e.altKey) return 'sub';
+  return state.mode;
+}
+
+// At most one preview per frame: a drag moves the pointer far more often
+// than the core can build a mask, and only the latest one is worth seeing.
+let previewing = 0;
+function schedulePreview() {
+  if (!previewing) previewing = requestAnimationFrame(preview);
+}
+
+function preview() {
+  previewing = 0;
+  const d = state.draft;
+  const operand = d && tools[state.tool].operand?.(d);
+  let cov = null;
+  if (operand) {
+    try {
+      cov = state.session.preview_mask(JSON.stringify(operand));
+    } catch { /* an unfinished outline is not an error worth reporting */ }
+  }
+  state.draftCov = cov ? combine(state.selCov, d.op, cov) : null;
+  showSel();
+}
+
+// ---------------------------------------------------------------- the tools
+
+function cells() {
+  return { w: state.session.width, h: state.session.height };
+}
+
+// Whether two normalized points are within `px` screen pixels.
+function near(p, q, px = 7) {
+  const r = ui.getBoundingClientRect();
+  return Math.hypot((p.x - q.x) * r.width, (p.y - q.y) * r.height) <= px;
+}
+
+function box(a, b) {
+  return {
+    x: r4(Math.min(a.x, b.x)), y: r4(Math.min(a.y, b.y)),
+    w: r4(Math.abs(a.x - b.x)), h: r4(Math.abs(a.y - b.y)),
+  };
+}
+
+// A press with no drag. In New mode that deselects, as clicking outside a
+// selection does in every editor; otherwise it does nothing.
+function click(op) {
+  state.draft = null;
+  state.draftCov = null;
+  if (op === 'new' && state.sel) setSel(null);
+  else showSel();
+}
+
+// Drops points closer than half a cell to the one before, which a double
+// click or a slow hand leaves behind.
+function dedupe(pts) {
+  const { w, h } = cells();
+  return pts.filter((p, i) => !i || Math.hypot((p.x - pts[i - 1].x) * w, (p.y - pts[i - 1].y) * h) >= 0.5);
+}
+
+const marquee = (kind) => ({
+  down(p, e) {
+    state.draft = { op: modeFor(e), a: p, b: p };
+  },
+  move(p) {
+    if (!state.draft) return;
+    state.draft.b = p;
+    schedulePreview();
+  },
+  up(p) {
+    const d = state.draft;
+    if (!d) return;
+    d.b = p;
+    const b = box(d.a, d.b);
+    const { w, h } = cells();
+    if (b.w * w < 0.5 || b.h * h < 0.5) return click(d.op);
+    commit(d.op, this.operand(d));
+  },
+  operand: (d) => ({ [kind]: box(d.a, d.b) }),
+  draw(d) {
+    const b = box(d.a, d.b);
+    outlinePath(() => {
+      if (kind === 'rect') uctx.rect(b.x * ui.width, b.y * ui.height, b.w * ui.width, b.h * ui.height);
+      else uctx.ellipse((b.x + b.w / 2) * ui.width, (b.y + b.h / 2) * ui.height, (b.w / 2) * ui.width, (b.h / 2) * ui.height, 0, 0, Math.PI * 2);
+    });
+  },
+});
+
+// An outline closed from a list of points, simplified to within `eps` cells.
+function closedPath(pts, eps) {
+  const { w, h } = cells();
+  const s = simplify(dedupe(pts), eps, w, h);
+  return s.length >= 3 ? { path: polyD(s) } : null;
+}
+
+const lasso = {
+  down(p, e) {
+    state.draft = { op: modeFor(e), pts: [p] };
+  },
+  move(p, e) {
+    const d = state.draft;
+    if (!d) return;
+    // Every point the pointer passed through, not only the one this event
+    // landed on: a fast stroke is otherwise a polygon.
+    for (const c of e.getCoalescedEvents?.() ?? [e]) d.pts.push(pt(c));
+    schedulePreview();
+  },
+  up() {
+    const d = state.draft;
+    if (!d) return;
+    const operand = closedPath(d.pts, 0.5);
+    if (!operand) return click(d.op);
+    commit(d.op, operand);
+  },
+  operand: (d) => closedPath(d.pts, 0.5),
+  draw(d) {
+    outlinePath(() => polyline(d.pts, false));
+  },
+};
+
+const polygon = {
+  down(p, e) {
+    const d = state.draft;
+    if (!d) {
+      state.draft = { op: modeFor(e), pts: [p] };
+    } else if (d.pts.length >= 3 && near(p, d.pts[0])) {
+      return this.close();
+    } else {
+      d.pts.push(p);
+    }
+    schedulePreview();
+  },
+  move() {
+    if (state.draft) schedulePreview();
+  },
+  close() {
+    const d = state.draft;
+    if (!d) return;
+    const operand = closedPath(d.pts, 0);
+    if (!operand) return cancelDraft();
+    commit(d.op, operand);
+  },
+  back() {
+    const d = state.draft;
+    d.pts.pop();
+    if (!d.pts.length) return cancelDraft();
+    schedulePreview();
+  },
+  operand: (d) => closedPath(state.hover ? [...d.pts, state.hover] : d.pts, 0),
+  draw(d) {
+    outlinePath(() => polyline(state.hover ? [...d.pts, state.hover] : d.pts, false));
+    handles(d.pts.slice(0, 1), state.hover && d.pts.length >= 3 && near(state.hover, d.pts[0]));
+  },
+};
+
+// The magnetic lasso: each click drops an anchor, and between the last one
+// and the pointer the core finds the path that hugs the strongest edge.
+const magnetic = {
+  down(p, e) {
+    const d = state.draft;
+    if (!d) {
+      state.draft = { op: modeFor(e), pts: [p], anchors: [p], live: [], wire: state.session.livewire(p.x, p.y) };
+    } else if (d.anchors.length >= 2 && near(p, d.pts[0])) {
+      return this.close();
+    } else {
+      this.anchor(p);
+    }
+    schedulePreview();
+  },
+  anchor(p) {
+    const d = state.draft;
+    d.pts.push(...pairs(d.wire.path_to(p.x, p.y)).slice(1));
+    const end = d.pts.at(-1);
+    d.anchors.push(end);
+    d.wire.free();
+    d.wire = state.session.livewire(end.x, end.y);
+    d.live = [];
+  },
+  move(p) {
+    const d = state.draft;
+    if (!d) return;
+    d.live = pairs(d.wire.path_to(p.x, p.y));
+    // Anchors are dropped along the way, as Photoshop does, so a long drag
+    // does not leave the whole outline to one search. Each goes on a bend
+    // well behind the pointer: the last stretch is only the path's way off
+    // the edge to wherever the pointer happens to be.
+    const { w, h } = cells();
+    const run = [0];
+    for (let i = 1; i < d.live.length; i++) {
+      run.push(run[i - 1] + Math.hypot((d.live[i].x - d.live[i - 1].x) * w, (d.live[i].y - d.live[i - 1].y) * h));
+    }
+    const total = run.at(-1) ?? 0;
+    if (total >= 20) {
+      let at = -1;
+      for (let i = 1; i < d.live.length - 1; i++) if (run[i] >= 4 && run[i] <= total - 6) at = i;
+      if (at > 0) {
+        this.anchor(d.live[at]);
+        d.live = pairs(d.wire.path_to(p.x, p.y));
+      }
+    }
+    schedulePreview();
+  },
+  close() {
+    const d = state.draft;
+    if (!d) return;
+    const start = d.pts[0];
+    const pts = [...d.pts, ...pairs(d.wire.path_to(start.x, start.y)).slice(1)];
+    d.wire.free();
+    d.wire = null;
+    const operand = closedPath(pts, 0.35);
+    if (!operand) return cancelDraft();
+    commit(d.op, operand);
+  },
+  back() {
+    const d = state.draft;
+    if (d.anchors.length <= 1) return cancelDraft();
+    d.anchors.pop();
+    const last = d.anchors.at(-1);
+    d.pts.length = d.pts.lastIndexOf(last) + 1;
+    d.wire.free();
+    d.wire = state.session.livewire(last.x, last.y);
+    d.live = [];
+    schedulePreview();
+  },
+  operand: (d) => closedPath([...d.pts, ...d.live.slice(1)], 0.35),
+  draw(d) {
+    outlinePath(() => polyline([...d.pts, ...d.live.slice(1)], false));
+    handles(d.anchors, state.hover && d.anchors.length >= 2 && near(state.hover, d.pts[0]));
+  },
+};
+
+function pairs(flat) {
+  const out = [];
+  for (let i = 0; i + 1 < flat.length; i += 2) out.push({ x: flat[i], y: flat[i + 1] });
+  return out;
+}
+
+function sampled(p, e, kind) {
+  const hex = state.session.sample(p.x, p.y);
+  const tolerance = +el('opt-tolerance').value;
+  if (kind === 'range') return commit(modeFor(e), { color: { hex, tolerance } });
+  const contiguous = el('opt-contiguous').checked;
+  commit(modeFor(e), { wand: { x: r4(p.x), y: r4(p.y), hex, tolerance, contiguous } });
+}
+
+// The pen: a click places a corner, a drag pulls out its handles, and any
+// anchor or handle already down can be dragged again until the path closes.
+const pen = {
+  down(p, e) {
+    let d = state.draft;
+    if (!d) d = state.draft = { op: modeFor(e), anchors: [], grab: null };
+    const hit = this.hit(p);
+    if (hit?.kind === 'anchor' && hit.a === d.anchors[0] && d.anchors.length >= 3) return this.close();
+    if (hit) {
+      d.grab = hit;
+    } else {
+      const a = { x: p.x, y: p.y, ix: 0, iy: 0, ox: 0, oy: 0 };
+      d.anchors.push(a);
+      d.grab = { kind: 'new', a };
+    }
+    schedulePreview();
+  },
+  hit(p) {
+    const d = state.draft;
+    for (const a of [...d.anchors].reverse()) {
+      if ((a.ox || a.oy) && near(p, { x: a.x + a.ox, y: a.y + a.oy })) return { kind: 'out', a };
+      if ((a.ix || a.iy) && near(p, { x: a.x + a.ix, y: a.y + a.iy })) return { kind: 'in', a };
+      if (near(p, a)) return { kind: 'anchor', a };
+    }
+    return null;
+  },
+  move(p) {
+    const d = state.draft;
+    if (!d?.grab) return;
+    const { kind, a } = d.grab;
+    if (kind === 'anchor') {
+      a.x = p.x;
+      a.y = p.y;
+    } else {
+      // A handle is dragged with its opposite mirrored, which keeps the
+      // curve smooth through the anchor.
+      const [dx, dy] = [p.x - a.x, p.y - a.y];
+      const out = kind !== 'in';
+      [a.ox, a.oy, a.ix, a.iy] = out ? [dx, dy, -dx, -dy] : [-dx, -dy, dx, dy];
+    }
+    schedulePreview();
+  },
+  up() {
+    if (state.draft) state.draft.grab = null;
+  },
+  close() {
+    const d = state.draft;
+    if (!d) return;
+    if (d.anchors.length < 3) return cancelDraft();
+    commit(d.op, { path: penD(d.anchors, true) });
+  },
+  back() {
+    const d = state.draft;
+    d.anchors.pop();
+    if (!d.anchors.length) return cancelDraft();
+    schedulePreview();
+  },
+  operand: (d) => (d.anchors.length >= 3 ? { path: penD(d.anchors, true) } : null),
+  draw(d) {
+    const open = penPoints(d.anchors, false);
+    if (state.hover && !d.grab && d.anchors.length) open.push(state.hover);
+    outlinePath(() => polyline(open, false));
+    uctx.lineWidth = devicePixelRatio;
+    uctx.strokeStyle = `rgb(${token('--accent').join(',')})`;
+    for (const a of d.anchors) {
+      for (const [hx, hy] of [[a.ix, a.iy], [a.ox, a.oy]]) {
+        if (!hx && !hy) continue;
+        const [x, y] = [(a.x + hx) * ui.width, (a.y + hy) * ui.height];
+        uctx.beginPath();
+        uctx.moveTo(a.x * ui.width, a.y * ui.height);
+        uctx.lineTo(x, y);
+        uctx.stroke();
+        uctx.beginPath();
+        uctx.arc(x, y, 3 * devicePixelRatio, 0, Math.PI * 2);
+        uctx.fill();
+      }
+    }
+    handles(d.anchors, state.hover && d.anchors.length >= 3 && near(state.hover, d.anchors[0]));
+  },
+};
+
+// The last step of the selection, when it is a path the pen could have drawn
+// and so can be taken back out to edit.
+function lastPen() {
+  const sel = state.sel;
+  if (!sel?.steps?.length || hasModifiers(sel)) return null;
+  const step = sel.steps.at(-1);
+  const op = Object.keys(step)[0];
+  const operand = step[op];
+  if (Object.keys(operand).length !== 1 || typeof operand.path !== 'string') return null;
+  const parsed = parsePen(operand.path);
+  return parsed && { op, ...parsed };
+}
+
+el('pen-reopen').addEventListener('click', () => {
+  const last = lastPen();
+  if (!last) return;
+  const steps = state.sel.steps.slice(0, -1);
+  pickTool('pen');
+  setSel(steps.length ? { ...state.sel, steps } : null);
+  state.draft = { op: last.op, anchors: last.anchors, grab: null };
+  schedulePreview();
+});
+
+// The brush paints a stroke, or erases one with Alt. Strokes of the same
+// size in a row are one step with several subpaths rather than a step each.
+const brush = {
+  down(p, e) {
+    let op = modeFor(e);
+    if (op === 'new') op = 'add';
+    state.draft = { op, pts: [p] };
+    schedulePreview();
+  },
+  move(p, e) {
+    const d = state.draft;
+    if (!d) return;
+    for (const c of e.getCoalescedEvents?.() ?? [e]) d.pts.push(pt(c));
+    schedulePreview();
+  },
+  up() {
+    const d = state.draft;
+    if (!d) return;
+    const stroke = this.operand(d).stroke;
+    state.draft = null;
+    state.draftCov = null;
+    const sel = state.sel;
+    const last = sel && !hasModifiers(sel) && sel.steps?.at(-1);
+    const prev = last?.[d.op]?.stroke;
+    if (prev && Object.keys(last[d.op]).length === 1 && prev.radius === stroke.radius
+        && (prev.hardness ?? 1) === (stroke.hardness ?? 1)) {
+      const steps = [...sel.steps.slice(0, -1), { [d.op]: { stroke: { ...prev, d: prev.d + stroke.d } } }];
+      return setSel({ ...sel, steps });
+    }
+    commit(d.op, { stroke });
+  },
+  operand(d) {
+    const { w, h } = cells();
+    const pts = simplify(dedupe(d.pts), 0.25, w, h);
+    const hardness = +el('opt-hardness').value;
+    const stroke = { d: polyD(pts, false), radius: r4(+el('opt-radius').value / w) };
+    if (hardness < 1) stroke.hardness = hardness;
+    return { stroke };
+  },
+  draw() {},
+};
+
+const tools = {
+  rect: marquee('rect'),
+  ellipse: marquee('ellipse'),
+  lasso,
+  polygon,
+  magnetic,
+  wand: { down: (p, e) => sampled(p, e, 'wand') },
+  range: { down: (p, e) => sampled(p, e, 'range') },
+  pen,
+  brush,
+};
+
+function pt(e) {
+  const r = ui.getBoundingClientRect();
+  return { x: clamp01((e.clientX - r.left) / r.width), y: clamp01((e.clientY - r.top) / r.height) };
+}
+
+ui.addEventListener('pointerdown', (e) => {
+  if (!state.session?.width || e.button !== 0) return;
+  e.preventDefault();
+  try {
+    ui.setPointerCapture(e.pointerId);
+  } catch { /* a synthetic pointer has nothing to capture */ }
+  tools[state.tool].down(pt(e), e);
+});
+ui.addEventListener('pointermove', (e) => {
+  if (!state.session?.width) return;
+  state.hover = pt(e);
+  tools[state.tool].move?.(state.hover, e);
+  drawUi();
+});
+ui.addEventListener('pointerup', (e) => {
+  if (state.session?.width) tools[state.tool].up?.(pt(e), e);
+});
+ui.addEventListener('dblclick', () => tools[state.tool].close?.());
+ui.addEventListener('pointerleave', () => {
+  state.hover = null;
+  drawUi();
+});
+
+function pickTool(tool) {
+  if (tool !== state.tool) cancelDraft();
+  state.tool = tool;
+  document.querySelectorAll('.tools [data-tool]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.tool === tool));
+  document.querySelectorAll('.options [data-for]').forEach((o) => {
+    o.hidden = !o.dataset.for.split(' ').includes(tool);
+  });
+  ui.classList.toggle('brush', tool === 'brush');
+  drawUi();
+}
+document.querySelectorAll('.tools [data-tool]').forEach((b) => b.addEventListener('click', () => pickTool(b.dataset.tool)));
+pickTool('rect');
+
+function pickMode(mode) {
+  state.mode = mode;
+  document.querySelectorAll('.modes [data-mode]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.mode === mode));
+}
+document.querySelectorAll('.modes [data-mode]').forEach((b) => b.addEventListener('click', () => pickMode(b.dataset.mode)));
+
+for (const id of ['opt-tolerance', 'opt-radius', 'opt-hardness']) {
+  const input = el(id);
+  const show = () => (input.nextElementSibling.value = input.value);
+  input.addEventListener('input', () => {
+    show();
+    drawUi();
+  });
+  show();
+}
+
+// ---------------------------------------------------------------- select menu
+
+el('sel-all').addEventListener('click', selectAll);
+el('sel-none').addEventListener('click', deselect);
+el('sel-invert').addEventListener('click', invert);
+
+function selectAll() {
+  setSel({ steps: [{ add: {} }] });
+}
+
+function deselect() {
+  cancelDraft();
+  if (state.sel) setSel(null);
+}
+
+function invert() {
+  const sel = state.sel;
+  if (!sel) return selectAll();
+  // Gain comes after invert, and 1 - gain(x) is not gain(1 - x), so a gained
+  // selection is wrapped rather than flipped in place.
+  if (sel.gain && sel.gain !== 1) return setSel({ steps: [{ add: sel }], invert: true });
+  const next = { ...sel };
+  if (next.invert) delete next.invert;
+  else next.invert = true;
+  setSel(next);
+}
+
+el('sel-layer').addEventListener('click', () => loadLayerMask());
+
+function loadLayerMask() {
+  const layer = state.selected === null ? null : state.layers[state.selected];
+  if (!layer) return;
+  try {
+    setSel(layer.mask ? JSON.parse(state.session.spec_json(layer.mask)) : { steps: [{ add: {} }] });
+  } catch (e) {
+    fail(e);
+  }
+}
+
+// The Select menu's list of regions, one entry per name in the scene.
+function regionMenu() {
+  let names = [];
+  try {
+    names = state.session ? JSON.parse(state.session.regions()) : [];
+  } catch { /* no scene yet */ }
+  el('sel-regions').replaceChildren(...names.map((name) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = name;
+    const small = document.createElement('small');
+    small.textContent = 'region';
+    b.append(' ', small);
+    b.addEventListener('click', () => setSel({ ref: name }));
+    return b;
+  }));
+}
+
+for (const b of document.querySelectorAll('#select-menu button')) {
+  b.addEventListener('click', () => (el('select-menu').open = false));
+}
+
+// ---------------------------------------------------------------- refine
+
+// Dragging a slider previews on every step and is one step of history when
+// let go.
+let refineFrom = null;
+for (const key of ['grow', 'smooth', 'feather']) {
+  const input = el(`refine-${key}`);
+  input.addEventListener('input', () => {
+    if (!state.sel) return;
+    refineFrom ??= JSON.stringify(state.sel);
+    const next = { ...state.sel };
+    const v = +input.value;
+    if (v) next[key] = v;
+    else delete next[key];
+    state.sel = next;
+    selChanged();
+  });
+  input.addEventListener('change', () => {
+    if (refineFrom === null) return;
+    state.selUndo.push(refineFrom);
+    state.selRedo = [];
+    refineFrom = null;
   });
 }
 
-el('clear').addEventListener('click', () => {
-  state.points = [];
-  emit();
-  drawOverlay();
+// ---------------------------------------------------------------- keys
+
+document.addEventListener('keydown', (e) => {
+  if (state.tab !== 'draw' || !state.session?.width) return;
+  if (e.target.closest?.('input, textarea, select')) return;
+  const mod = e.ctrlKey || e.metaKey;
+  const act = (f) => {
+    e.preventDefault();
+    f();
+  };
+  if (mod && !e.altKey && e.code === 'KeyA') return act(selectAll);
+  if (mod && !e.altKey && e.code === 'KeyD') return act(deselect);
+  // Ctrl+Shift+I is the browser's own, so Photoshop's other binding is used.
+  if ((e.shiftKey && e.key === 'F7') || (mod && e.altKey && e.code === 'KeyI')) return act(invert);
+  if (mod || e.altKey) return;
+  const tool = tools[state.tool];
+  if (e.key === 'Escape' && state.draft) return act(cancelDraft);
+  if (e.key === 'Enter' && state.draft && tool.close) return act(() => tool.close());
+  if (e.key === 'Backspace' && state.draft && tool.back) return act(() => tool.back());
+  // A tool's key again steps through the tools that share it.
+  const group = [...document.querySelectorAll(`.tools [data-key="${e.key.toLowerCase()}"]`)].map((b) => b.dataset.tool);
+  if (group.length && !e.shiftKey) {
+    const at = group.indexOf(state.tool);
+    act(() => pickTool(group[(at + 1) % group.length]));
+  }
 });
 
-overlay.addEventListener('click', (e) => {
-  if (!el('viewport').classList.contains('drawing') || !state.session) return;
-  const r = overlay.getBoundingClientRect();
-  const p = { x: clamp01((e.clientX - r.left) / r.width), y: clamp01((e.clientY - r.top) / r.height) };
-  // A box needs two corners and nothing more, so a third click starts a new
-  // one rather than silently ignoring it.
-  if (state.shape !== 'polygon' && state.points.length >= 2) state.points = [];
-  state.points.push(p);
-  emit();
-  drawOverlay();
-});
+// ---------------------------------------------------------------- drawing the ui
 
-// The draw tab's Apply button: which layer it would write to, if any.
+function outlinePath(build) {
+  uctx.beginPath();
+  build();
+  uctx.lineJoin = 'round';
+  uctx.lineWidth = 3 * devicePixelRatio;
+  uctx.strokeStyle = 'rgba(0, 0, 0, 0.55)';
+  uctx.stroke();
+  uctx.lineWidth = 1.25 * devicePixelRatio;
+  uctx.strokeStyle = '#fff';
+  uctx.stroke();
+}
+
+function polyline(pts, closed) {
+  pts.forEach((p, i) => uctx[i ? 'lineTo' : 'moveTo'](p.x * ui.width, p.y * ui.height));
+  if (closed) uctx.closePath();
+}
+
+// Anchor squares; the first grows when the pointer is close enough to close
+// the outline on it.
+function handles(pts, closing) {
+  const dpr = devicePixelRatio;
+  uctx.fillStyle = `rgb(${token('--accent').join(',')})`;
+  uctx.strokeStyle = '#000';
+  uctx.lineWidth = dpr;
+  pts.forEach((p, i) => {
+    const r = (i === 0 && closing ? 5 : 3) * dpr;
+    uctx.fillRect(p.x * ui.width - r, p.y * ui.height - r, r * 2, r * 2);
+    uctx.strokeRect(p.x * ui.width - r, p.y * ui.height - r, r * 2, r * 2);
+  });
+}
+
+function drawUi() {
+  uctx.clearRect(0, 0, ui.width, ui.height);
+  const s = state.session;
+  if (state.tab !== 'draw' || !s?.width) return;
+  const dpr = devicePixelRatio;
+  const [cx, cy] = [ui.width / s.width, ui.height / s.height];
+
+  // Marching ants: a white dash over a black one, walked along by the timer.
+  if (state.runs.length) {
+    uctx.beginPath();
+    for (const [x0, y0, x1, y1] of state.runs) {
+      uctx.moveTo(x0 * cx, y0 * cy);
+      uctx.lineTo(x1 * cx, y1 * cy);
+    }
+    uctx.lineWidth = dpr;
+    uctx.setLineDash([]);
+    uctx.strokeStyle = '#000';
+    uctx.stroke();
+    uctx.setLineDash([4 * dpr, 4 * dpr]);
+    uctx.lineDashOffset = -antsOffset * dpr;
+    uctx.strokeStyle = '#fff';
+    uctx.stroke();
+    uctx.setLineDash([]);
+  }
+
+  if (state.draft) tools[state.tool].draw?.(state.draft);
+
+  if (state.tool === 'brush' && state.hover) {
+    const r = +el('opt-radius').value * cx;
+    uctx.beginPath();
+    uctx.arc(state.hover.x * ui.width, state.hover.y * ui.height, r, 0, Math.PI * 2);
+    uctx.lineWidth = 3 * dpr;
+    uctx.strokeStyle = 'rgba(0, 0, 0, 0.55)';
+    uctx.stroke();
+    uctx.lineWidth = dpr;
+    uctx.strokeStyle = '#fff';
+    uctx.stroke();
+  }
+}
+
+setInterval(() => {
+  if (state.tab !== 'draw' || !state.runs.length || document.hidden) return;
+  antsOffset = (antsOffset + 1) % 8;
+  drawUi();
+}, 120);
+
+// ---------------------------------------------------------------- apply
+
+// The Apply button: which layer it would write to, and if not, why not.
 function maskTarget() {
   const layer = state.selected === null ? null : state.layers[state.selected];
   const b = el('apply-mask');
-  b.disabled = !layer || !el('snippet').value;
+  const any = state.selCov?.some((v) => v > 0);
+  const why = !state.sel ? 'Select something first'
+    : !any ? 'The selection is empty'
+      : !layer ? 'Select a layer in the Layers tab' : null;
+  b.disabled = !!why;
+  el('apply-menu').inert = !!why;
+  if (why) el('apply-menu').open = false;
   b.textContent = layer ? `Apply to ${layer.label}` : 'Apply';
-  b.title = layer ? `Make this the mask of ${layer.label}` : 'Select a layer to apply a mask to';
+  b.title = why ?? `Make the selection the mask of ${layer.label}`;
+  el('sel-layer').disabled = !layer;
+  el('sel-layer-name').textContent = layer?.label ?? '';
+  el('save-region').disabled = !state.sel || !any || !el('region-name').value.trim();
+  el('copy').disabled = !state.sel;
 }
 
-el('apply-mask').addEventListener('click', () => {
+function applySel(mode) {
   const i = state.selected;
-  if (i === null || !el('snippet').value) return;
-  if (layerEdit({ op: 'mask', i, mask: el('snippet').value })) {
-    state.points = [];
-    emit();
-    el('showmask').checked = true;
-    showTab('layers');
+  if (i === null || !state.sel) return;
+  const verb = { replace: 'Set as', add: 'Added to', sub: 'Subtracted from', and: 'Intersected with' }[mode];
+  if (layerEdit({ op: 'combine', i, mask: JSON.stringify(state.sel), mode })) {
+    say(`${verb} the mask of ${state.layers[i].label}`);
+  }
+}
+
+el('apply-mask').addEventListener('click', () => applySel('replace'));
+for (const b of document.querySelectorAll('#apply-menu [data-combine]')) {
+  b.addEventListener('click', () => {
+    el('apply-menu').open = false;
+    applySel(b.dataset.combine);
+  });
+}
+
+el('region-name').addEventListener('input', maskTarget);
+el('region-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const name = el('region-name').value.trim();
+  if (!name || !state.sel) return;
+  if (layerEdit({ op: 'region', name, mask: JSON.stringify(state.sel) })) {
+    el('region-name').value = '';
+    say(`Saved region ${name}`);
+    maskTarget();
   }
 });
-
-function drawShape() {
-  const pts = state.points;
-  if (!pts.length) return;
-  const W = overlay.width, H = overlay.height;
-  octx.strokeStyle = `rgb(${token('--chalk').join(',')})`;
-  octx.lineWidth = 1;
-  octx.beginPath();
-  if (state.shape === 'polygon') {
-    pts.forEach((p, i) => octx[i ? 'lineTo' : 'moveTo'](p.x * W, p.y * H));
-    if (pts.length > 2) octx.closePath();
-  } else if (pts.length === 2) {
-    const b = box(pts);
-    if (state.shape === 'rect') {
-      octx.rect(b.x * W, b.y * H, b.w * W, b.h * H);
-    } else {
-      octx.ellipse((b.x + b.w / 2) * W, (b.y + b.h / 2) * H, (b.w / 2) * W, (b.h / 2) * H, 0, 0, Math.PI * 2);
-    }
-  }
-  octx.stroke();
-  octx.fillStyle = `rgb(${token('--accent').join(',')})`;
-  for (const p of pts) octx.fillRect(p.x * W - 1, p.y * H - 1, 3, 3);
-}
-
-function box(pts) {
-  const [a, b] = pts;
-  return { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(a.x - b.x), h: Math.abs(a.y - b.y) };
-}
-
-const f = (v) => v.toFixed(3).replace(/0+$/, '').replace(/\.$/, '.0');
-
-function emit() {
-  const pts = state.points;
-  let text = '';
-  if (state.shape === 'polygon' && pts.length >= 3) {
-    text = 'polygon:\n' + pts.map((p) => `  - { x: ${f(p.x)}, y: ${f(p.y)} }`).join('\n');
-  } else if (state.shape !== 'polygon' && pts.length === 2) {
-    const b = box(pts);
-    text = `${state.shape}: { x: ${f(b.x)}, y: ${f(b.y)}, w: ${f(b.w)}, h: ${f(b.h)} }`;
-  }
-  el('snippet').value = text;
-  // Showing what the selector actually catches is the point of drawing it in
-  // the first place; feather and gain change the answer, so the core is asked
-  // rather than the outline being trusted.
-  state.preview = null;
-  if (text && state.session) {
-    try {
-      state.preview = state.session.preview_mask(text);
-    } catch { /* an unfinished outline is not an error worth reporting */ }
-  }
-  maskTarget();
-}
 
 function paintCoverage(cov, alpha = 0.45) {
   const [r, g, b] = token('--accent');
@@ -879,7 +1631,6 @@ function paintCoverage(cov, alpha = 0.45) {
     img.data[i * 4 + 3] = cov[i] * alpha;
   }
   octx.putImageData(img, 0, 0);
-  drawShape();
 }
 
 el('copy').addEventListener('click', () => navigator.clipboard.writeText(el('snippet').value));
@@ -970,7 +1721,7 @@ el('save-video').addEventListener('click', () => saving('Recording…', async ()
 // A menu left open after the pointer has gone elsewhere is just a panel in
 // the way.
 document.addEventListener('click', (e) => {
-  for (const id of ['save', 'layer-menu', 'add']) if (!el(id).contains(e.target)) el(id).open = false;
+  for (const id of ['save', 'layer-menu', 'add', 'select-menu', 'apply-menu']) if (!el(id).contains(e.target)) el(id).open = false;
 });
 
 function download(blob, name) {
@@ -1002,4 +1753,4 @@ function stem(name) {
 
 // Exposed so the page can be driven from the console, and by the headless
 // smoke test in tools/, which has no way to work a file picker.
-window.pixelgen = { state, open, apply, edit: layerEdit, undo };
+window.pixelgen = { state, open, apply, edit: layerEdit, undo, setSel };

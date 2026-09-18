@@ -370,7 +370,8 @@ main {
 }
 
 #view,
-#overlay {
+#overlay,
+#ui {
   /* The renderer produces whole cells; letting the browser interpolate them
      would undo the entire point of the pipeline. */
   image-rendering: pixelated;
@@ -384,18 +385,28 @@ main {
 #view {
   background: var(--ink);
 }
-#overlay {
+#overlay,
+#ui {
   position: absolute;
   inset: 0;
   margin: auto;
   pointer-events: none;
 }
-#viewport.drawing #overlay {
+/* Vector drawing at the screen's own resolution, so no pixelation. */
+#ui {
+  image-rendering: auto;
+  touch-action: none;
+}
+#viewport.drawing #ui {
   pointer-events: auto;
   cursor: crosshair;
 }
+#viewport.drawing #ui.brush {
+  cursor: none;
+}
 #viewport.empty #view,
-#viewport.empty #overlay {
+#viewport.empty #overlay,
+#viewport.empty #ui {
   display: none;
 }
 #viewport:not(.empty) #drop {
@@ -1034,6 +1045,135 @@ input.rename {
   display: flex;
   gap: 0.4rem;
   align-items: center;
+}
+
+/* ── selection ────────────────────────────────────────────────────────── */
+.tools,
+.options,
+.modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+.options {
+  gap: 0.5rem 0.9rem;
+  padding-bottom: 0.85rem;
+  border-bottom: 1px solid var(--rule-soft);
+}
+.modes {
+  gap: 0;
+}
+/* One segmented control: the four modes are one choice. */
+.modes .ctl {
+  border-radius: 0;
+  margin-left: -1px;
+}
+.modes .ctl:first-child {
+  border-radius: 3px 0 0 3px;
+  margin-left: 0;
+}
+.modes .ctl:last-child {
+  border-radius: 0 3px 3px 0;
+}
+.modes .ctl[aria-pressed="true"] {
+  position: relative;
+}
+.opt,
+.refine label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font: 600 0.6875rem/1 var(--cond);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+.options [hidden] {
+  display: none;
+}
+.opt input[type="range"] {
+  width: 6.5rem;
+}
+.opt output,
+.refine output,
+#sel-summary {
+  min-width: 2.25rem;
+  font: 400 0.75rem/1 var(--mono);
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--chalk);
+}
+#sel-summary {
+  color: var(--dim);
+}
+input[type="range"] {
+  accent-color: var(--accent);
+}
+.refine {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) 2.5rem;
+  align-items: center;
+  gap: 0.35rem 0.75rem;
+}
+.refine output {
+  text-align: right;
+}
+
+/* The Select menu drops below its button, as the add menu does. */
+#select-menu > div {
+  left: 0;
+  right: auto;
+  top: calc(100% + 0.4rem);
+  bottom: auto;
+}
+#sel-regions:empty {
+  display: none;
+}
+#sel-regions {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--rule);
+}
+
+/* A split button: the action, and a menu of the ways to do it. */
+.split {
+  display: flex;
+}
+.split > .ctl {
+  border-radius: 3px 0 0 3px;
+}
+.split .menu > summary.ctl {
+  border-radius: 0 3px 3px 0;
+  margin-left: -1px;
+  height: 100%;
+}
+/* Drawn rather than typed: the mono face has no down-pointing triangle. */
+.split .menu > summary.ctl::after {
+  content: "";
+  display: inline-block;
+  vertical-align: middle;
+  border: 4px solid transparent;
+  border-top: 5px solid currentColor;
+  border-bottom: 0;
+}
+#apply-menu > div {
+  left: 0;
+  right: auto;
+}
+
+#region-name {
+  flex: 1;
+  min-width: 0;
+  padding: 0.4rem 0.6rem;
+  background: var(--panel);
+  color: var(--chalk);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  font: 400 0.8125rem/1.3 var(--mono);
+}
+#region-name:focus {
+  border-color: var(--dim);
 }
 
 /* ── help ─────────────────────────────────────────────────────────────── */
