@@ -711,6 +711,18 @@ function stop() {
 }
 
 el('play').addEventListener('click', () => (state.playing ? stop() : play()));
+document.addEventListener('keydown', (e) => {
+  if (e.key !== ' ' || e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
+  // Leave Space to whatever already owns it: typing, and pressing a focused
+  // button or checkbox (the Play button included). The scrubber has no use
+  // for it, so playback can resume straight after dragging.
+  const t = e.target;
+  if (t.closest?.('textarea, select, button, a, summary, [contenteditable]')) return;
+  if (t.matches?.('input:not([type=range])')) return;
+  if (el('play').disabled) return;
+  e.preventDefault();
+  state.playing ? stop() : play();
+});
 el('scrub').addEventListener('input', (e) => {
   stop();
   state.frame = +e.target.value;
