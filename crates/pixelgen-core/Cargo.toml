@@ -10,6 +10,11 @@ description = "Renderer for animated pixel-art backgrounds"
 serde = { workspace = true }
 serde_yaml = { workspace = true }
 
+# GIF is the one format the renderer can write on its own: frames are already
+# indices into a palette of at most 256 colours, which is what GIF stores.
+# Everything else goes out through ffmpeg, which the browser does not have.
+gif = { workspace = true }
+
 # Frames are independent, so they are rendered one per core. wasm has no
 # threads by default, and there the renderer falls back to a serial loop.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]

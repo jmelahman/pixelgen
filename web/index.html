@@ -56,8 +56,14 @@
       <output id="counter" for="scrub">&mdash;</output>
       <label class="check"><input type="checkbox" id="showmask"> Mask</label>
       <span class="spacer"></span>
-      <button id="png" class="ctl" disabled>Frame PNG</button>
-      <button id="record" class="ctl" disabled>Record loop</button>
+      <details class="menu" id="save" inert>
+        <summary class="ctl">Save</summary>
+        <div>
+          <button id="save-png" type="button">PNG <small>this frame</small></button>
+          <button id="save-gif" type="button">GIF <small>the loop</small></button>
+          <button id="save-video" type="button">MP4 <small>the loop</small></button>
+        </div>
+      </details>
     </div>
 
     <div class="strip">

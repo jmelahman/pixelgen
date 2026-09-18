@@ -6,6 +6,7 @@
 //! every effect is a pure function of a phase in `[0,1)` and is periodic in it.
 
 pub mod effect;
+pub mod encode;
 pub mod mask;
 pub mod noise;
 pub mod palette;

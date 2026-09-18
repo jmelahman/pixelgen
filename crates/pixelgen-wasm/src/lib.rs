@@ -178,6 +178,19 @@ impl Session {
         Ok(rgba(&p.frame(i), scale))
     }
 
+    /// The whole loop as a GIF.
+    ///
+    /// The one moving format the page can write without a codec: the frames
+    /// are already indices into a palette of at most 256 colours, which is
+    /// what a GIF stores, so nothing is re-encoded and the loop stays exact.
+    /// Video goes out through the browser's own recorder instead.
+    pub fn gif(&self, scale: usize) -> Result<Vec<u8>, JsError> {
+        let p = self.prepared()?;
+        let frames: Vec<_> = (0..p.frames).map(|i| p.frame(i)).collect();
+        pixelgen_core::encode::gif(&frames, &p.matcher.palette, scale, self.fps())
+            .map_err(|e| JsError::new(&e))
+    }
+
     /// A drawn layer's resolved mask as 8-bit coverage, one byte per cell.
     ///
     /// Indices match [`Session::layers`]. Drawing this over the base is the

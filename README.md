@@ -114,8 +114,8 @@ natively and need nothing.
 
 | Crate                  | Contents                                                                                                                                                            |
 | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `crates/pixelgen-core` | The whole renderer: masks, palette, effects, scene format. No file, process or network I/O; rayon is the only non-`serde` dependency and it is compiled out on wasm |
-| `crates/pixelgen-cli`  | The `pixelgen` binary: image decoding, ffmpeg, GIF writing                                                                                                          |
+| `crates/pixelgen-core` | The whole renderer: masks, palette, effects, scene format, GIF encoding. No file, process or network I/O; rayon is the only dependency beyond `serde` and `gif`, and it is compiled out on wasm |
+| `crates/pixelgen-cli`  | The `pixelgen` binary: image decoding, ffmpeg, writing files                                                                                                        |
 | `crates/pixelgen-wasm` | `wasm-bindgen` wrapper around the core, for the browser UI                                                                                                          |
 
 The split is load-bearing rather than cosmetic. The core never opens a file —
@@ -126,8 +126,15 @@ a reimplementation that drifts.
 ## In the browser
 
 The renderer compiles to wasm, and `web/` is a small editor built on it: open a
-photograph, generate a starter scene, edit the YAML with the loop playing beside
-it, and draw or preview masks over the frame.
+photograph and it lands in the scene its own analysis suggests, with the loop
+playing beside the YAML and masks drawable over the frame.
+
+**Save** writes a PNG of the current frame, a GIF of the loop, or a recording
+of it. The GIF comes from the same encoder the CLI uses — frames are already
+indices into a palette of at most 256 colours, which is exactly what a GIF
+stores, so no colour is re-decided. Video is the browser's own recorder, which
+means MP4 in Chrome and Safari and WebM in Firefox; the menu says which you are
+getting. For video at wallpaper size, use the CLI and its ffmpeg.
 
 ```
 cargo install wasm-bindgen-cli

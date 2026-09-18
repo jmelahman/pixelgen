@@ -6,9 +6,8 @@ use std::io::{BufWriter, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-use pixelgen_core::palette::{Matcher, Palette};
+use pixelgen_core::palette::Palette;
 use pixelgen_core::pixel::Image;
-use pixelgen_core::resample;
 
 use crate::image_io::{to8, write_png};
 
@@ -165,43 +164,11 @@ fn write_video(frames: &[Image], o: &Options, ext: &str) -> Result<(), Box<dyn E
     Ok(())
 }
 
-/// Encodes GIF directly rather than through ffmpeg. Every frame is already
-/// exactly on a palette of at most 256 colours, which is precisely GIF's own
-/// model, so the usual palettegen/paletteuse dance would only risk changing
-/// colours that are already right.
+/// Encodes GIF directly rather than through ffmpeg: the encoder lives in the
+/// core, where the browser can reach it too.
 fn write_gif(frames: &[Image], pal: &Palette, o: &Options) -> Result<(), Box<dyn Error>> {
-    if pal.is_empty() {
-        return Err("gif output needs a palette".into());
-    }
-    if pal.len() > 256 {
-        return Err(format!("gif supports at most 256 colours, the scene has {}", pal.len()).into());
-    }
-    let table: Vec<u8> = pal.iter().flat_map(|c| [to8(c.r), to8(c.g), to8(c.b)]).collect();
-    let matcher = Matcher::new(pal.clone());
-
-    let (w, h) = ((frames[0].w * o.scale) as u16, (frames[0].h * o.scale) as u16);
-    let file = std::fs::File::create(o.path)?;
-    let mut enc = gif::Encoder::new(BufWriter::new(file), w, h, &table)?;
-    enc.set_repeat(gif::Repeat::Infinite)?;
-
-    // GIF delays are in hundredths of a second, so only a subset of frame
-    // rates is representable exactly.
-    let delay = ((100.0 / o.fps as f32) + 0.5) as u16;
-
-    for f in frames {
-        let up = resample::upscale(f, o.scale);
-        let idx: Vec<u8> = (0..up.h)
-            .flat_map(|y| (0..up.w).map(move |x| (x, y)))
-            .map(|(x, y)| {
-                let (r, g, b) = up.get(x, y);
-                matcher.index(r, g, b) as u8
-            })
-            .collect();
-        let mut frame = gif::Frame::from_indexed_pixels(w, h, idx, None);
-        frame.delay = delay.max(2);
-        frame.dispose = gif::DisposalMethod::Keep;
-        enc.write_frame(&frame)?;
-    }
+    let bytes = pixelgen_core::encode::gif(frames, pal, o.scale, o.fps)?;
+    std::fs::write(o.path, bytes)?;
     Ok(())
 }
 

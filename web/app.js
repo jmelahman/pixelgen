@@ -108,7 +108,8 @@ function apply() {
   state.frame = Math.min(state.frame, s.frames - 1);
   el('scrub').max = s.frames - 1;
   el('scrub').value = state.frame;
-  for (const id of ['play', 'scrub', 'png', 'record']) el(id).disabled = false;
+  for (const id of ['play', 'scrub']) el(id).disabled = false;
+  el('save').inert = false;
 
   swatches(s.palette);
   layerList(s.layers, s.layer_types);
@@ -366,25 +367,55 @@ el('copy').addEventListener('click', () => navigator.clipboard.writeText(el('sni
 
 // ---------------------------------------------------------------- export
 
-el('png').addEventListener('click', () => {
+// The recorder is the only part of this that is not the renderer's own output:
+// MP4 where the browser can write one, WebM where it cannot. The menu says
+// which, rather than offering a format that will arrive named something else.
+const VIDEO = ['video/mp4;codecs=avc1.42E01E', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm']
+  .find((t) => MediaRecorder.isTypeSupported(t)) ?? '';
+const VIDEO_EXT = VIDEO.startsWith('video/mp4') ? 'mp4' : 'webm';
+el('save-video').firstChild.nodeValue = `${VIDEO_EXT.toUpperCase()} `;
+
+// Saving is the one thing here that can take a visible moment, so the menu
+// label says what is happening and the menu closes: leaving it open over a
+// frozen page reads as a click that did not land.
+async function saving(label, run) {
+  const summary = el('save').querySelector('summary');
+  el('save').open = false;
+  summary.textContent = label;
+  // A frame for the label to paint before the encoder takes the thread.
+  await new Promise(requestAnimationFrame);
+  try {
+    await run();
+  } catch (e) {
+    fail(e);
+  }
+  summary.textContent = 'Save';
+}
+
+el('save-png').addEventListener('click', () => saving('Writing…', async () => {
   const scale = 4;
   const rgba = state.session.frame(state.frame, scale);
   const c = document.createElement('canvas');
   c.width = state.session.width * scale;
   c.height = state.session.height * scale;
   c.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(rgba), c.width, c.height), 0, 0);
-  c.toBlob((b) => download(b, `${stem(state.name)}-pixel.png`));
-});
+  const blob = await new Promise((r) => c.toBlob(r));
+  download(blob, `${stem(state.name)}-pixel.png`);
+}));
+
+// Written by the renderer itself rather than re-encoded: the frames are
+// already indices into the scene's palette, which is what a GIF stores, so
+// every colour survives exactly.
+el('save-gif').addEventListener('click', () => saving('Writing GIF…', async () => {
+  const bytes = state.session.gif(2);
+  download(new Blob([bytes], { type: 'image/gif' }), `${stem(state.name)}-loop.gif`);
+}));
 
 // A preview-quality loop, written with what the browser already has. The CLI
-// is still the way to get an mp4 at wallpaper size: this re-encodes frames the
-// renderer produced exactly, and hands the result to a lossy codec.
-el('record').addEventListener('click', async () => {
+// is still the way to get video at wallpaper size: this hands frames the
+// renderer produced exactly to a lossy codec.
+el('save-video').addEventListener('click', () => saving('Recording…', async () => {
   stop();
-  const btn = el('record');
-  btn.disabled = true;
-  btn.textContent = 'Recording…';
-
   const scale = 3;
   const c = document.createElement('canvas');
   c.width = state.session.width * scale;
@@ -395,7 +426,7 @@ el('record').addEventListener('click', async () => {
   const stream = c.captureStream(0);
   const track = stream.getVideoTracks()[0];
   const chunks = [];
-  const rec = new MediaRecorder(stream, { mimeType: 'video/webm', videoBitsPerSecond: 12e6 });
+  const rec = new MediaRecorder(stream, { mimeType: VIDEO, videoBitsPerSecond: 12e6 });
   rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
   const done = new Promise((r) => (rec.onstop = r));
   rec.start();
@@ -411,9 +442,13 @@ el('record').addEventListener('click', async () => {
 
   rec.stop();
   await done;
-  download(new Blob(chunks, { type: 'video/webm' }), `${stem(state.name)}-loop.webm`);
-  btn.disabled = false;
-  btn.textContent = 'Record loop';
+  download(new Blob(chunks, { type: VIDEO }), `${stem(state.name)}-loop.${VIDEO_EXT}`);
+}));
+
+// A menu left open after the pointer has gone elsewhere is just a panel in
+// the way.
+document.addEventListener('click', (e) => {
+  if (!el('save').contains(e.target)) el('save').open = false;
 });
 
 function download(blob, name) {
