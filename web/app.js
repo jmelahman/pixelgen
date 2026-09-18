@@ -48,6 +48,8 @@ const state = {
   /** The pointer over the plate, normalized, or null. */
   hover: null,
   name: 'image',
+  /** Set while a save runs, which may span many turns of the event loop. */
+  saving: false,
 };
 
 await init();
@@ -115,6 +117,15 @@ el('yaml').addEventListener('input', () => {
 // Builds the scene in the box. Returns whether it could.
 function apply() {
   if (!state.session) return false;
+  // A video save renders across many turns of the event loop; swapping the
+  // scene under it would change its size or length halfway through, so the
+  // edit waits for the save to finish. The text already holds it, so the
+  // controls may go on showing it.
+  if (state.saving) {
+    clearTimeout(pending);
+    pending = setTimeout(apply, 300);
+    return true;
+  }
   try {
     state.session.set_scene(el('yaml').value);
     el('error').hidden = true;
@@ -349,6 +360,12 @@ function swatches(hexes) {
 // the effect rejects - is reported and the working scene stays as it was.
 function layerEdit(op) {
   if (!state.session) return false;
+  // Edits the session in place, which a video save is still reading from.
+  if (state.saving) {
+    say('Wait for the save to finish', true);
+    layerPanel();
+    return false;
+  }
   let yaml;
   try {
     yaml = state.session.edit(JSON.stringify(op));
@@ -1654,10 +1671,13 @@ async function saving(label, run) {
   summary.textContent = label;
   // A frame for the label to paint before the encoder takes the thread.
   await new Promise(requestAnimationFrame);
+  state.saving = true;
   try {
     await run();
   } catch (e) {
     fail(e);
+  } finally {
+    state.saving = false;
   }
   summary.textContent = 'Save';
 }
@@ -1686,13 +1706,39 @@ el('save-gif').addEventListener('click', () => saving('Writing GIF…', async ()
 // renderer produced exactly to a lossy codec.
 el('save-video').addEventListener('click', () => saving('Recording…', async () => {
   stop();
+  const summary = el('save').querySelector('summary');
+  const session = state.session;
+  const { width, height, frames } = session;
   const scale = 3;
-  const c = document.createElement('canvas');
-  c.width = state.session.width * scale;
-  c.height = state.session.height * scale;
-  const cx = c.getContext('2d');
+  const fps = Math.max(1, session.fps);
 
-  const fps = Math.max(1, state.session.fps);
+  // The recorder stamps each frame with the moment it arrives, so the file is
+  // exactly as long as the recording took. Rendering inside the timed loop
+  // let a big scene's render time stretch the video far past frames/fps; the
+  // loop is rendered first, at grid size so it stays small, and the timed
+  // pass only has to blit.
+  const loop = [];
+  for (let i = 0; i < frames; i++) {
+    summary.textContent = `Rendering ${i + 1}/${frames}…`;
+    // A timeout rather than an animation frame: enough for the label to
+    // paint, and it keeps going if the tab is sent to the background.
+    await new Promise((r) => setTimeout(r, 0));
+    loop.push(new ImageData(new Uint8ClampedArray(session.frame(i, 1)), width, height));
+  }
+  summary.textContent = 'Recording…';
+
+  const grid = document.createElement('canvas');
+  grid.width = width;
+  grid.height = height;
+  const gx = grid.getContext('2d');
+  const c = document.createElement('canvas');
+  c.width = width * scale;
+  c.height = height * scale;
+  const cx = c.getContext('2d');
+  // Nearest-neighbour, so the upscale is the same hard-edged one the
+  // renderer's own `scale` does.
+  cx.imageSmoothingEnabled = false;
+
   const stream = c.captureStream(0);
   const track = stream.getVideoTracks()[0];
   // The standard puts requestFrame on the track; Firefox only has it on the
@@ -1704,13 +1750,17 @@ el('save-video').addEventListener('click', () => saving('Recording…', async ()
   const done = new Promise((r) => (rec.onstop = r));
   rec.start();
 
-  for (let i = 0; i < state.session.frames; i++) {
-    const rgba = state.session.frame(i, scale);
-    cx.putImageData(new ImageData(new Uint8ClampedArray(rgba), c.width, c.height), 0, 0);
+  const start = performance.now();
+  for (let i = 0; i < frames; i++) {
+    gx.putImageData(loop[i], 0, 0);
+    cx.drawImage(grid, 0, 0, c.width, c.height);
     // Pushing frames explicitly rather than letting the stream sample the
     // canvas is what keeps the recording frame-exact, and so still a loop.
     requestFrame();
-    await new Promise((r) => setTimeout(r, 1000 / fps));
+    // Against a fixed schedule rather than a fixed pause, so the time the
+    // blit itself takes does not accumulate into the length.
+    const due = start + ((i + 1) * 1000) / fps;
+    await new Promise((r) => setTimeout(r, Math.max(0, due - performance.now())));
   }
 
   rec.stop();
