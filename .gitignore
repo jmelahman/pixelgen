@@ -2,6 +2,7 @@
 /web/pkg
 *-pixel.png
 *-loop.mp4
+*-loop.webm
 *-loop.gif
 .claude/settings.local.json
 .playwright-mcp

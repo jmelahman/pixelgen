@@ -2,7 +2,7 @@
 // file only moves pixels between the core and a canvas, and keeps the editor's
 // state honest about what has actually been prepared.
 
-import init, { Session, effects } from './pkg/pixelgen_wasm.js';
+import init, { Session, effects, webm } from './pkg/pixelgen_wasm.js';
 import { setLayerDisabled, setScalar } from './scene-text.js';
 import {
   combine, hasModifiers, outline, parsePen, penD, penPoints, polyD, simplify, withStep,
@@ -1890,12 +1890,19 @@ el('copy').addEventListener('click', () => navigator.clipboard.writeText(el('sni
 
 // ---------------------------------------------------------------- export
 
-// The recorder is the only part of this that is not the renderer's own output:
-// MP4 where the browser can write one, WebM where it cannot. The menu says
-// which, rather than offering a format that will arrive named something else.
-const VIDEO = ['video/mp4;codecs=avc1.42E01E', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm']
+// The codec is the only part of this that is not the renderer's own output.
+// Where the browser exposes its encoder (WebCodecs), frames go through it one
+// at a time and are wrapped as WebM here, each stamped with its place in the
+// loop. Elsewhere the browser's recorder does both: MP4 where it can write
+// one, WebM where it cannot. The menu says which, rather than offering a
+// format that will arrive named something else - so where the encoder exists
+// the recorder, its fallback, asks for WebM first too.
+const ENCODER = typeof VideoEncoder === 'function';
+const MP4 = ['video/mp4;codecs=avc1.42E01E', 'video/mp4'];
+const WEBM = ['video/webm;codecs=vp9', 'video/webm'];
+const RECORDER = (ENCODER ? [...WEBM, ...MP4] : [...MP4, ...WEBM])
   .find((t) => MediaRecorder.isTypeSupported(t)) ?? '';
-const VIDEO_EXT = VIDEO.startsWith('video/mp4') ? 'mp4' : 'webm';
+const VIDEO_EXT = ENCODER || !RECORDER.startsWith('video/mp4') ? 'webm' : 'mp4';
 el('save-video').firstChild.nodeValue = `${VIDEO_EXT.toUpperCase()} `;
 
 // Saving is the one thing here that can take a visible moment, so the menu
@@ -1943,53 +1950,198 @@ el('save-gif').addEventListener('click', () => saving('Writing GIF…', async ()
 el('save-video').addEventListener('click', () => saving('Recording…', async () => {
   stop();
   const summary = el('save').querySelector('summary');
-  const session = state.session;
-  const { width, height, frames } = session;
-  const scale = 3;
-  const fps = Math.max(1, session.fps);
+  // Read before the long wait: a photo opened meanwhile renames state, not
+  // this loop.
+  const name = stem(state.name);
+  const blob = await video(state.session, 3, (label) => (summary.textContent = label));
+  const ext = blob.type.startsWith('video/mp4') ? 'mp4' : 'webm';
+  download(blob, `${name}-loop.${ext}`);
+}));
 
-  // The recorder stamps each frame with the moment it arrives, so the file is
-  // exactly as long as the recording took. Rendering inside the timed loop
-  // let a big scene's render time stretch the video far past frames/fps; the
-  // loop is rendered first, at grid size so it stays small, and the timed
-  // pass only has to blit.
-  const loop = [];
-  for (let i = 0; i < frames; i++) {
-    summary.textContent = `Rendering ${i + 1}/${frames}…`;
-    // A timeout rather than an animation frame: enough for the label to
-    // paint, and it keeps going if the tab is sent to the background.
-    await new Promise((r) => setTimeout(r, 0));
-    loop.push(new ImageData(new Uint8ClampedArray(session.frame(i, 1)), width, height));
+// `video` for the console and the smoke test, held to the same guard a save
+// from the menu is: an edit landing between frames would change the loop
+// under it.
+async function exportVideo(scale = 3) {
+  if (state.saving) throw new Error('a save is already running');
+  stop();
+  state.saving = true;
+  try {
+    return await video(state.session, scale);
+  } finally {
+    state.saving = false;
   }
-  summary.textContent = 'Recording…';
+}
 
+// The loop as a video file, at `scale` times the grid. `label` is told what
+// is happening, since a big loop takes a while.
+async function video(session, scale, label = () => {}) {
+  let blob = null;
+  try {
+    blob = await encodeLoop(session, scale, label);
+  } catch (e) {
+    // An encoder can claim a size and still fail on it; the recorder may
+    // yet manage, and a stuttery file beats none.
+    console.warn('encoder failed, recording instead:', e);
+  }
+  return blob ?? recordLoop(session, scale, label);
+}
+
+// The first VP9 profile the encoder takes at this size, or null. Level 5.1
+// covers up to 4096 wide; 6.1 is for anything bigger.
+async function vp9(width, height, fps) {
+  if (!ENCODER) return null;
+  for (const codec of ['vp09.00.51.08', 'vp09.00.61.08']) {
+    const config = { codec, width, height, bitrate: 12e6, framerate: fps, latencyMode: 'quality' };
+    try {
+      if ((await VideoEncoder.isConfigSupported(config)).supported) return config;
+    } catch {
+      // A malformed config for this browser, which is as good as unsupported.
+    }
+  }
+  return null;
+}
+
+// The video's size: the grid at `scale`, less a pixel where that is odd, as
+// VP9 and H.264 subsample chroma in pairs. The CLI trims the same way.
+function videoSize(width, height, scale) {
+  return [(width * scale) & ~1, (height * scale) & ~1];
+}
+
+// Nearest-neighbour upscaling of grid-sized frames, so the video's cells are
+// the same hard-edged ones the renderer's own `scale` draws. Returns a draw
+// function and the canvas it draws on, cropped to `videoSize`.
+function upscaler(width, height, scale) {
   const grid = document.createElement('canvas');
   grid.width = width;
   grid.height = height;
   const gx = grid.getContext('2d');
   const c = document.createElement('canvas');
-  c.width = width * scale;
-  c.height = height * scale;
+  [c.width, c.height] = videoSize(width, height, scale);
   const cx = c.getContext('2d');
-  // Nearest-neighbour, so the upscale is the same hard-edged one the
-  // renderer's own `scale` does.
   cx.imageSmoothingEnabled = false;
+  const draw = (img) => {
+    gx.putImageData(img, 0, 0);
+    cx.drawImage(grid, 0, 0, width * scale, height * scale);
+  };
+  return { c, draw };
+}
 
+// Encodes the loop frame by frame and wraps it as WebM. Every frame carries
+// its own timestamp, i / fps, so however long a big frame takes to encode the
+// file plays at the loop's rate and is exactly frames / fps long. Returns null
+// where the browser has no VP9 encoder for this size.
+async function encodeLoop(session, scale, label) {
+  const { width, height, frames } = session;
+  const fps = Math.max(1, session.fps);
+  const config = await vp9(...videoSize(width, height, scale), fps);
+  if (!config) return null;
+
+  const parts = [];
+  const keys = [];
+  let failure = null;
+  const encoder = new VideoEncoder({
+    output: (chunk) => {
+      const b = new Uint8Array(chunk.byteLength);
+      chunk.copyTo(b);
+      parts.push(b);
+      keys.push(chunk.type === 'key' ? 1 : 0);
+    },
+    error: (e) => (failure = e),
+  });
+  const { c, draw } = upscaler(width, height, scale);
+  const step = 1e6 / fps;
+  try {
+    encoder.configure(config);
+    for (let i = 0; i < frames; i++) {
+      label(`Encoding ${i + 1}/${frames}…`);
+      // A timeout rather than an animation frame: enough for the label to
+      // paint, and it keeps going if the tab is sent to the background.
+      await new Promise((r) => setTimeout(r, 0));
+      if (failure) throw failure;
+      draw(new ImageData(new Uint8ClampedArray(session.frame(i, 1)), width, height));
+      const frame = new VideoFrame(c, { timestamp: Math.round(i * step), duration: Math.round(step) });
+      try {
+        // A key frame every two seconds, so a player can seek into a long
+        // loop.
+        encoder.encode(frame, { keyFrame: i % (2 * fps) === 0 });
+      } finally {
+        frame.close();
+      }
+      // Handing frames over faster than they are compressed only queues
+      // them, full size, in memory; wait for the encoder to catch up. The
+      // timeout is for browsers whose encoder never fires `dequeue`.
+      while (encoder.encodeQueueSize > 4 && !failure) {
+        await new Promise((r) => {
+          const done = () => {
+            encoder.removeEventListener('dequeue', done);
+            clearTimeout(timer);
+            r();
+          };
+          encoder.addEventListener('dequeue', done);
+          const timer = setTimeout(done, 20);
+        });
+      }
+    }
+    await encoder.flush();
+  } catch (e) {
+    // A failed encoder closes itself, and whatever touches it next throws
+    // "closed codec"; the error it reported is the one worth showing.
+    throw failure ?? e;
+  } finally {
+    if (encoder.state !== 'closed') encoder.close();
+  }
+  if (failure) throw failure;
+  // The file places frame i at i / fps by its position, so a frame the
+  // encoder dropped would shift every one after it and shorten the loop.
+  // Better no file than a quietly wrong one.
+  if (parts.length !== frames) {
+    throw new Error(`the encoder returned ${parts.length} of ${frames} frames`);
+  }
+
+  const data = new Uint8Array(parts.reduce((n, b) => n + b.length, 0));
+  let at = 0;
+  for (const b of parts) {
+    data.set(b, at);
+    at += b.length;
+  }
+  const sizes = Uint32Array.from(parts, (b) => b.length);
+  const bytes = webm(c.width, c.height, fps, data, sizes, Uint8Array.from(keys));
+  return new Blob([bytes], { type: 'video/webm' });
+}
+
+// The fallback, for browsers without WebCodecs: the canvas is filmed by the
+// browser's recorder. The recorder stamps each frame with the moment it
+// arrives, so the file is exactly as long as the recording took, and a frame
+// the encoder has not kept up with is dropped or held. The loop is rendered
+// first, at grid size so it stays small, and the timed pass only has to blit;
+// even so, a large enough canvas outruns a realtime encoder and stutters.
+async function recordLoop(session, scale, label) {
+  const { width, height, frames } = session;
+  const fps = Math.max(1, session.fps);
+
+  const loop = [];
+  for (let i = 0; i < frames; i++) {
+    label(`Rendering ${i + 1}/${frames}…`);
+    await new Promise((r) => setTimeout(r, 0));
+    loop.push(new ImageData(new Uint8ClampedArray(session.frame(i, 1)), width, height));
+  }
+  label('Recording…');
+
+  const { c, draw } = upscaler(width, height, scale);
   const stream = c.captureStream(0);
   const track = stream.getVideoTracks()[0];
   // The standard puts requestFrame on the track; Firefox only has it on the
   // stream.
   const requestFrame = track.requestFrame ? () => track.requestFrame() : () => stream.requestFrame();
   const chunks = [];
-  const rec = new MediaRecorder(stream, { mimeType: VIDEO, videoBitsPerSecond: 12e6 });
+  const rec = new MediaRecorder(stream, { mimeType: RECORDER, videoBitsPerSecond: 12e6 });
   rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
   const done = new Promise((r) => (rec.onstop = r));
   rec.start();
 
   const start = performance.now();
   for (let i = 0; i < frames; i++) {
-    gx.putImageData(loop[i], 0, 0);
-    cx.drawImage(grid, 0, 0, c.width, c.height);
+    draw(loop[i]);
     // Pushing frames explicitly rather than letting the stream sample the
     // canvas is what keeps the recording frame-exact, and so still a loop.
     requestFrame();
@@ -2001,8 +2153,8 @@ el('save-video').addEventListener('click', () => saving('Recording…', async ()
 
   rec.stop();
   await done;
-  download(new Blob(chunks, { type: VIDEO }), `${stem(state.name)}-loop.${VIDEO_EXT}`);
-}));
+  return new Blob(chunks, { type: RECORDER });
+}
 
 // A menu left open after the pointer has gone elsewhere is just a panel in
 // the way.
@@ -2039,4 +2191,4 @@ function stem(name) {
 
 // Exposed so the page can be driven from the console, and by the headless
 // smoke test in tools/, which has no way to work a file picker.
-window.pixelgen = { state, open, apply, edit: layerEdit, undo, setSel };
+window.pixelgen = { state, open, apply, edit: layerEdit, undo, setSel, video: exportVideo };

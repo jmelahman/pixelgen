@@ -429,6 +429,34 @@ const out = empty ? { boxes: [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]], grid: [
     })(),
     // Relabeled at load to whatever the browser can actually record.
     video: document.getElementById('save-video').textContent.trim(),
+    // Wide enough that a realtime recorder would fall behind and stutter:
+    // the file has to be exactly frames / fps long anyway.
+    videoFile: await (async () => {
+      const scale = Math.ceil(1100 / s.width);
+      // A hung encoder or player would otherwise hang the hook with it.
+      const within = (p, what) => Promise.race([
+        p, new Promise((_, j) => setTimeout(() => j(new Error(what + ' timed out')), 60000)),
+      ]);
+      const blob = await within(window.pixelgen.video(scale), 'video export');
+      const head = new Uint8Array(await blob.slice(0, 4).arrayBuffer());
+      const v = document.createElement('video');
+      v.src = URL.createObjectURL(blob);
+      await within(new Promise((r, j) => {
+        v.onloadedmetadata = r;
+        v.onerror = () => j(new Error('video: ' + v.error?.message));
+      }), 'loading the video');
+      URL.revokeObjectURL(v.src);
+      return {
+        type: blob.type,
+        magic: [...head].map((b) => b.toString(16).padStart(2, '0')).join(''),
+        size: [v.videoWidth, v.videoHeight],
+        // Trimmed to even, as the codec needs.
+        expect: [(s.width * scale) & ~1, (s.height * scale) & ~1],
+        duration: v.duration,
+        expected: s.frames / s.fps,
+        frame: 1 / s.fps,
+      };
+    })(),
     status: document.getElementById('status').textContent,
     // A blank canvas is the failure this whole test exists to catch.
     painted: (() => {
@@ -465,6 +493,10 @@ if (!out.layers.length) bad.push('no layers');
 if (!out.scene.trim()) bad.push('opening an image left the scene box empty');
 if (out.gif.magic !== 'GIF89a') bad.push('gif export produced ' + JSON.stringify(out.gif));
 if (!/^(MP4|WEBM) /.test(out.video)) bad.push('video item is labeled ' + JSON.stringify(out.video));
+const vf = out.videoFile;
+if (vf.type !== 'video/webm' || vf.magic !== '1a45dfa3') bad.push('video export is not a WebM file: ' + JSON.stringify(vf));
+if (vf.size.join() !== vf.expect.join()) bad.push('video export has the wrong size: ' + JSON.stringify(vf));
+if (!(Math.abs(vf.duration - vf.expected) < vf.frame)) bad.push('video export is not frames / fps long: ' + JSON.stringify(vf));
 if (new Set(out.boxes.map((b) => b.join())).size !== 1) bad.push('overlays are not over the plate: ' + JSON.stringify(out.boxes));
 // The plate should be the largest whole multiple of the frame that fits: not
 // left at 1x in a large viewport, and not blown past the edges of a small one.

@@ -11,7 +11,7 @@ use pixelgen_core::mask::{self, Builder, Mask, Spec};
 use pixelgen_core::pixel::Image;
 use pixelgen_core::render::{self, Prepared};
 use pixelgen_core::scene::{Combine, Scene};
-use pixelgen_core::{effect, resample, starter};
+use pixelgen_core::{effect, encode, resample, starter};
 use serde::Deserialize;
 use serde_json::json;
 use wasm_bindgen::prelude::*;
@@ -119,6 +119,36 @@ fn parse_spec(yaml: Option<String>) -> Result<Option<Spec>, JsError> {
         serde_yaml::from_str::<Spec>(&m).map_err(|e| JsError::new(&format!("parsing mask: {e}")))
     })
     .transpose()
+}
+
+/// Wraps VP9 frames from the browser's `VideoEncoder` in a WebM file.
+///
+/// The frames arrive concatenated in `data`, `sizes[i]` bytes each, with
+/// `keys[i]` nonzero for a key frame: three flat arrays cross into wasm in one
+/// copy apiece, where a list of chunks would cross one at a time.
+#[wasm_bindgen]
+pub fn webm(
+    width: u32,
+    height: u32,
+    fps: usize,
+    data: &[u8],
+    sizes: &[u32],
+    keys: &[u8],
+) -> Result<Vec<u8>, JsError> {
+    if sizes.len() != keys.len() || sizes.iter().map(|&n| n as usize).sum::<usize>() != data.len() {
+        return Err(JsError::new("frame sizes do not match the data"));
+    }
+    let mut at = 0;
+    let chunks: Vec<_> = sizes
+        .iter()
+        .zip(keys)
+        .map(|(&n, &k)| {
+            let data = &data[at..at + n as usize];
+            at += n as usize;
+            encode::Chunk { data, key: k != 0 }
+        })
+        .collect();
+    encode::webm(width, height, fps, &chunks).map_err(|e| JsError::new(&e))
 }
 
 /// One source photograph, plus whatever has been prepared from it.
@@ -341,11 +371,12 @@ impl Session {
     /// The one moving format the page can write without a codec: the frames
     /// are already indices into a palette of at most 256 colors, which is
     /// what a GIF stores, so nothing is re-encoded and the loop stays exact.
-    /// Video goes out through the browser's own recorder instead.
+    /// Video is compressed by the browser's own encoder and wrapped by
+    /// [`webm`].
     pub fn gif(&self, scale: usize) -> Result<Vec<u8>, JsError> {
         let p = self.prepared()?;
         let frames: Vec<_> = (0..p.frames).map(|i| p.frame(i)).collect();
-        pixelgen_core::encode::gif(&frames, &p.matcher.palette, scale, self.fps())
+        encode::gif(&frames, &p.matcher.palette, scale, self.fps())
             .map_err(|e| JsError::new(&e))
     }
 
