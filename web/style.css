@@ -10,40 +10,50 @@
 @font-face {
   font-family: "Plex Cond";
   src: url(assets/fonts/plex-cond-600.woff2) format("woff2");
-  font-weight: 600; font-style: normal; font-display: swap;
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
 }
 @font-face {
   font-family: "Plex Cond";
   src: url(assets/fonts/plex-cond-700.woff2) format("woff2");
-  font-weight: 700; font-style: normal; font-display: swap;
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
 }
 @font-face {
   font-family: "Plex Sans";
   src: url(assets/fonts/plex-sans-var.woff2) format("woff2");
-  font-weight: 100 700; font-style: normal; font-display: swap;
+  font-weight: 100 700;
+  font-style: normal;
+  font-display: swap;
 }
 @font-face {
   font-family: "Plex Mono";
   src: url(assets/fonts/plex-mono-400.woff2) format("woff2");
-  font-weight: 400; font-style: normal; font-display: swap;
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
 }
 @font-face {
   font-family: "Plex Mono";
   src: url(assets/fonts/plex-mono-600.woff2) format("woff2");
-  font-weight: 600; font-style: normal; font-display: swap;
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
 }
 
 /* ── tokens ───────────────────────────────────────────────────────────── */
 :root {
   color-scheme: dark;
 
-  --ink: #0a0a0c;          /* charcoal ground */
-  --ink-2: #141417;        /* row hover, quiet bands */
-  --panel: #17171a;        /* cards, code, the sheet */
-  --rule: #2b2b32;         /* hairlines */
+  --ink: #0a0a0c; /* charcoal ground */
+  --ink-2: #141417; /* row hover, quiet bands */
+  --panel: #17171a; /* cards, code, the sheet */
+  --rule: #2b2b32; /* hairlines */
   --rule-soft: #1f1f24;
-  --chalk: #f4f4f5;        /* primary text */
-  --dim: #9797a2;          /* secondary text */
+  --chalk: #f4f4f5; /* primary text */
+  --dim: #9797a2; /* secondary text */
   --accent: #f4635e;
   --accent-soft: rgba(244, 99, 94, 0.15);
   --shadow: 0 1px 0 rgba(255, 255, 255, 0.03);
@@ -78,15 +88,22 @@
 }
 
 /* ── base ─────────────────────────────────────────────────────────────── */
-* { box-sizing: border-box; }
+* {
+  box-sizing: border-box;
+}
 
 /* Several things here are laid out with flex or grid, whose display would
    otherwise win over the attribute. */
-[hidden] { display: none !important; }
+[hidden] {
+  display: none !important;
+}
 
 /* Thin rules rather than the platform's slabs, so a scrolling panel does not
    grow a heavy gray edge the rest of the page does not have. */
-* { scrollbar-width: thin; scrollbar-color: var(--rule) transparent; }
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--rule) transparent;
+}
 
 body {
   margin: 0;
@@ -100,8 +117,14 @@ body {
   text-rendering: optimizeLegibility;
 }
 
-a { color: var(--accent); text-decoration: none; }
-a:hover { text-decoration: underline; text-underline-offset: 2px; }
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
 
 :focus-visible {
   outline: 2px solid var(--accent);
@@ -110,137 +133,244 @@ a:hover { text-decoration: underline; text-underline-offset: 2px; }
 }
 
 code {
-  font-family: var(--mono); font-size: 0.86em;
-  background: var(--panel); border: 1px solid var(--rule-soft);
-  border-radius: 2px; padding: 0.05em 0.3em;
-  -webkit-box-decoration-break: clone; box-decoration-break: clone;
+  font-family: var(--mono);
+  font-size: 0.86em;
+  background: var(--panel);
+  border: 1px solid var(--rule-soft);
+  border-radius: 2px;
+  padding: 0.05em 0.3em;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
 }
 
 .skip {
-  position: absolute; left: -9999px; top: 0; z-index: 20;
-  background: var(--panel); color: var(--chalk);
-  padding: 0.6rem 1rem; border: 1px solid var(--rule);
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 20;
+  background: var(--panel);
+  color: var(--chalk);
+  padding: 0.6rem 1rem;
+  border: 1px solid var(--rule);
 }
-.skip:focus { left: 0.5rem; top: 0.5rem; }
+.skip:focus {
+  left: 0.5rem;
+  top: 0.5rem;
+}
 
 .eyebrow {
   font: 600 0.6875rem/1 var(--cond);
-  letter-spacing: 0.18em; text-transform: uppercase; color: var(--dim);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--dim);
   margin: 0;
 }
 /* A count sits beside its label and stays quieter through family and tracking
    rather than through contrast. */
 .eyebrow small {
-  font: 400 0.75rem/1 var(--mono); letter-spacing: 0; text-transform: none;
+  font: 400 0.75rem/1 var(--mono);
+  letter-spacing: 0;
+  text-transform: none;
   margin-left: 0.5rem;
 }
 
 h2 {
   font: 600 0.9375rem/1.3 var(--cond);
-  letter-spacing: 0.1em; text-transform: uppercase;
-  margin: 0; padding-bottom: 0.5rem; border-bottom: 1px solid var(--rule);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin: 0;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--rule);
 }
 
-.lede { font-size: 1.0625rem; margin: 0; }
-.quiet { color: var(--dim); font-size: 0.875rem; margin: 0; }
-p { max-width: 34rem; }
+.quiet {
+  color: var(--dim);
+  font-size: 0.875rem;
+  margin: 0;
+}
+p {
+  max-width: 34rem;
+}
 
 /* ── top bar ──────────────────────────────────────────────────────────── */
 .topbar {
   /* A floor, not a fixed height: the bar wraps to two lines on a narrow
      screen, and a fixed one would cut the second off. */
-  min-height: var(--bar-h); flex: none;
+  min-height: var(--bar-h);
+  flex: none;
   background: var(--ink);
   border-bottom: 1px solid var(--rule);
 }
 .topbar > div {
-  min-height: var(--bar-h); padding: 0.4rem 1.25rem;
-  display: flex; align-items: center; gap: 1.25rem;
+  min-height: var(--bar-h);
+  padding: 0.4rem 1.25rem;
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
 }
-.mark { display: flex; align-items: baseline; gap: 0.55rem; color: var(--chalk); }
-.mark:hover { text-decoration: none; }
-.mark b { font: 600 0.9375rem/1 var(--mono); letter-spacing: -0.01em; }
+.mark {
+  display: flex;
+  align-items: baseline;
+  gap: 0.55rem;
+  color: var(--chalk);
+}
+.mark:hover {
+  text-decoration: none;
+}
+.mark b {
+  font: 600 0.9375rem/1 var(--mono);
+  letter-spacing: -0.01em;
+}
 .mark span {
   font: 600 0.6875rem/1 var(--cond);
-  letter-spacing: 0.16em; text-transform: uppercase; color: var(--dim);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--dim);
 }
 
-.actions { display: flex; gap: 0.5rem; }
+.actions {
+  display: flex;
+  gap: 0.5rem;
+}
 
 #status {
-  margin: 0; min-width: 0; flex: 1; max-width: none;
-  font: 400 0.8125rem/1 var(--mono); color: var(--dim);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  margin: 0;
+  min-width: 0;
+  flex: 1;
+  max-width: none;
+  font: 400 0.8125rem/1 var(--mono);
+  color: var(--dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-#status.bad { color: var(--accent); }
+#status.bad {
+  color: var(--accent);
+}
 
 /* Flush to the right edge whatever the status line's length. */
-.topbar nav { margin-left: auto; display: flex; gap: 1.25rem; }
+.topbar nav {
+  margin-left: auto;
+  display: flex;
+  gap: 1.25rem;
+}
 .topbar nav a {
   font: 600 0.6875rem/1 var(--cond);
-  letter-spacing: 0.14em; text-transform: uppercase; color: var(--dim);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--dim);
 }
-.topbar nav a:hover { color: var(--chalk); text-decoration: none; }
+.topbar nav a:hover {
+  color: var(--chalk);
+  text-decoration: none;
+}
 
 /* ── controls ─────────────────────────────────────────────────────────── */
 /* One control face for the whole page: a hairline box in the label hand, the
    way a drawing labels a thing rather than dressing it up. */
 .ctl {
-  display: inline-flex; align-items: center; gap: 0.4rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
   padding: 0.45rem 0.7rem;
-  border: 1px solid var(--rule); border-radius: 3px;
-  background: transparent; color: var(--dim); cursor: pointer;
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--dim);
+  cursor: pointer;
   font: 600 0.6875rem/1 var(--cond);
-  letter-spacing: 0.14em; text-transform: uppercase;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
   white-space: nowrap;
 }
-.ctl:hover:not(:disabled) { color: var(--chalk); border-color: var(--dim); }
-.ctl:disabled { opacity: 0.45; cursor: default; }
-.ctl[aria-pressed="true"] { color: var(--chalk); background: var(--accent-soft); border-color: var(--accent); }
+.ctl:hover:not(:disabled) {
+  color: var(--chalk);
+  border-color: var(--dim);
+}
+.ctl:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.ctl[aria-pressed="true"] {
+  color: var(--chalk);
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
 
 .check {
-  display: inline-flex; align-items: center; gap: 0.4rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
   font: 600 0.6875rem/1 var(--cond);
-  letter-spacing: 0.14em; text-transform: uppercase; color: var(--dim);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--dim);
   cursor: pointer;
 }
-.check input { accent-color: var(--accent); margin: 0; }
-.check:hover { color: var(--chalk); }
+.check input {
+  accent-color: var(--accent);
+  margin: 0;
+}
+.check:hover {
+  color: var(--chalk);
+}
 
-.spacer { flex: 1; }
+.spacer {
+  flex: 1;
+}
 
 /* ── the page ─────────────────────────────────────────────────────────── */
 main {
-  flex: 1; min-height: 0;
+  flex: 1;
+  min-height: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr) var(--sheet-w);
 }
 
 .stage {
-  display: flex; flex-direction: column; gap: 0.9rem;
-  min-width: 0; padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  min-width: 0;
+  padding: 1.25rem;
   background: var(--board);
 }
 
 /* ── the plate ────────────────────────────────────────────────────────── */
 #viewport {
   position: relative;
-  flex: 1; min-height: 0;
-  display: grid; place-items: center;
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  place-items: center;
   padding: 1rem;
   border: 1px solid var(--rule);
 }
 /* Registration marks, as on a plate that has to line up with another. They
    are the only decoration on the page and they earn it by marking the frame
    the image is composed inside. */
-#viewport::before, #viewport::after {
-  content: ""; position: absolute; width: 10px; height: 10px;
-  border: 1px solid var(--rule); pointer-events: none;
+#viewport::before,
+#viewport::after {
+  content: "";
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border: 1px solid var(--rule);
+  pointer-events: none;
 }
-#viewport::before { top: -1px; left: -1px; border-width: 1px 0 0 1px; }
-#viewport::after { bottom: -1px; right: -1px; border-width: 0 1px 1px 0; }
+#viewport::before {
+  top: -1px;
+  left: -1px;
+  border-width: 1px 0 0 1px;
+}
+#viewport::after {
+  bottom: -1px;
+  right: -1px;
+  border-width: 0 1px 1px 0;
+}
 
-#view, #overlay {
+#view,
+#overlay {
   /* The renderer produces whole cells; letting the browser interpolate them
      would undo the entire point of the pipeline. */
   image-rendering: pixelated;
@@ -251,232 +381,461 @@ main {
 }
 /* The plate's own ground, so a frame whose palette runs to black still ends
    somewhere. Only the lower canvas: the overlay is drawn on top of it. */
-#view { background: var(--ink); }
+#view {
+  background: var(--ink);
+}
 #overlay {
-  position: absolute; inset: 0; margin: auto;
+  position: absolute;
+  inset: 0;
+  margin: auto;
   pointer-events: none;
 }
-#viewport.drawing #overlay { pointer-events: auto; cursor: crosshair; }
-#viewport.empty #view, #viewport.empty #overlay { display: none; }
-#viewport:not(.empty) #drop { display: none; }
+#viewport.drawing #overlay {
+  pointer-events: auto;
+  cursor: crosshair;
+}
+#viewport.empty #view,
+#viewport.empty #overlay {
+  display: none;
+}
+#viewport:not(.empty) #drop {
+  display: none;
+}
 
+/* Just a label on the board: the dotted rule marks a place to put something,
+   not a dialog. The whole thing opens the file picker. */
 #drop {
-  display: grid; gap: 0.6rem; justify-items: start;
-  max-width: 30rem;
-  /* A sheet waiting to be worked on, not a dialog. */
-  padding: 1.5rem;
-  border: 1px dashed var(--rule);
-  background: var(--panel);
+  display: grid;
+  gap: 0.5rem;
+  justify-items: center;
+  padding: 1rem 1.5rem;
+  border: 1px dashed var(--dim);
+  border-radius: 6px;
+  background: none;
+  color: var(--chalk);
+  cursor: pointer;
+  font: 600 0.75rem/1 var(--cond);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+#drop span {
+  color: var(--dim);
+}
+#drop:hover {
+  border-color: var(--chalk);
 }
 
 /* A control that opens a short list under itself. <details> rather than a
    scripted popover: the open state, the keyboard and the focus order are the
    element's own, and `inert` is what "not until an image is loaded" means. */
-.menu { position: relative; }
-.menu > summary { list-style: none; cursor: pointer; }
-.menu > summary::-webkit-details-marker { display: none; }
-.menu[inert] > summary { opacity: 0.4; cursor: default; }
-.menu[open] > summary { background: var(--accent-soft); border-color: var(--accent); }
+.menu {
+  position: relative;
+}
+.menu > summary {
+  list-style: none;
+  cursor: pointer;
+}
+.menu > summary::-webkit-details-marker {
+  display: none;
+}
+.menu[inert] > summary {
+  opacity: 0.4;
+  cursor: default;
+}
+.menu[open] > summary {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
 .menu > div {
-  position: absolute; right: 0; bottom: calc(100% + 0.4rem); z-index: 5;
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 0.4rem);
+  z-index: 5;
   min-width: 12rem;
-  display: flex; flex-direction: column;
+  display: flex;
+  flex-direction: column;
   border: 1px solid var(--rule);
   background: var(--panel);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
 }
 .menu > div button {
-  display: flex; align-items: baseline; justify-content: space-between; gap: 1rem;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
   padding: 0.55rem 0.75rem;
-  border: 0; border-bottom: 1px solid var(--rule-soft);
-  background: none; color: var(--chalk); text-align: left; cursor: pointer;
+  border: 0;
+  border-bottom: 1px solid var(--rule-soft);
+  background: none;
+  color: var(--chalk);
+  text-align: left;
+  cursor: pointer;
   font: 600 0.75rem/1 var(--cond);
-  letter-spacing: 0.12em; text-transform: uppercase;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
 }
-.menu > div button:last-child { border-bottom: 0; }
-.menu > div button:hover { background: var(--ink-2); }
+.menu > div button:last-child {
+  border-bottom: 0;
+}
+.menu > div button:hover {
+  background: var(--ink-2);
+}
 .menu > div button small {
-  font: 400 0.6875rem/1 var(--mono); letter-spacing: 0; text-transform: none;
+  font: 400 0.6875rem/1 var(--mono);
+  letter-spacing: 0;
+  text-transform: none;
   color: var(--dim);
 }
 
 /* ── transport ────────────────────────────────────────────────────────── */
-.transport { display: flex; align-items: center; gap: 0.75rem; flex: none; }
+.transport {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex: none;
+}
 
 #counter {
-  font: 400 0.8125rem/1 var(--mono); color: var(--dim);
-  font-variant-numeric: tabular-nums; min-width: 7ch;
+  font: 400 0.8125rem/1 var(--mono);
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+  min-width: 7ch;
 }
 
 /* The scrubber as a drafting scale: a hairline with a square cursor on it,
    because the thing being indexed is a whole frame, not a position. */
 #scrub {
-  flex: 1; min-width: 6rem; height: 1.25rem;
-  margin: 0; padding: 0;
-  background: transparent; appearance: none; cursor: pointer;
+  flex: 1;
+  min-width: 6rem;
+  height: 1.25rem;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  appearance: none;
+  cursor: pointer;
 }
-#scrub:disabled { cursor: default; opacity: 0.45; }
+#scrub:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
 #scrub::-webkit-slider-runnable-track {
-  height: 1px; background: var(--rule);
+  height: 1px;
+  background: var(--rule);
 }
-#scrub::-moz-range-track { height: 1px; background: var(--rule); }
+#scrub::-moz-range-track {
+  height: 1px;
+  background: var(--rule);
+}
 #scrub::-webkit-slider-thumb {
-  appearance: none; width: 3px; height: 1.25rem; margin-top: -0.6rem;
-  background: var(--accent); border: 0; border-radius: 0;
+  appearance: none;
+  width: 3px;
+  height: 1.25rem;
+  margin-top: -0.6rem;
+  background: var(--accent);
+  border: 0;
+  border-radius: 0;
 }
 #scrub::-moz-range-thumb {
-  width: 3px; height: 1.25rem;
-  background: var(--accent); border: 0; border-radius: 0;
+  width: 3px;
+  height: 1.25rem;
+  background: var(--accent);
+  border: 0;
+  border-radius: 0;
 }
 
 /* ── palette strip ────────────────────────────────────────────────────── */
-.strip { flex: none; display: grid; gap: 0.45rem; }
+.strip {
+  flex: none;
+  display: grid;
+  gap: 0.45rem;
+}
 /* Butted together with a hairline around the set: the palette is one object,
    a ramp sorted into hue-then-luma runs, and gaps would say it is a row of
    unrelated swatches. */
-#palette { display: flex; min-height: 1rem; border: 1px solid var(--rule); }
-#palette:empty { border-style: dashed; }
-#palette i { flex: 1 1 0; min-width: 4px; height: 1rem; }
+#palette {
+  display: flex;
+  min-height: 1rem;
+  border: 1px solid var(--rule);
+}
+#palette:empty {
+  border-style: dashed;
+}
+#palette i {
+  flex: 1 1 0;
+  min-width: 4px;
+  height: 1rem;
+}
 
 /* ── the sheet ────────────────────────────────────────────────────────── */
 .sheet {
-  display: flex; flex-direction: column; min-height: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   border-left: 1px solid var(--rule);
   background: var(--ink);
 }
 
-.titleblock { margin: 0; flex: none; display: flex; border-bottom: 1px solid var(--rule); }
+.titleblock {
+  margin: 0;
+  flex: none;
+  display: flex;
+  border-bottom: 1px solid var(--rule);
+}
 .titleblock div {
-  flex: 1 1 0; min-width: 0;
+  flex: 1 1 0;
+  min-width: 0;
   padding: 0.5rem 0.85rem;
   border-right: 1px solid var(--rule-soft);
 }
-.titleblock div:last-child { border-right: 0; }
+.titleblock div:last-child {
+  border-right: 0;
+}
 .titleblock dt {
   font: 600 0.6875rem/1.4 var(--cond);
-  letter-spacing: 0.14em; text-transform: uppercase; color: var(--dim);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--dim);
 }
 .titleblock dd {
-  margin: 0; font: 600 0.875rem/1.4 var(--mono);
+  margin: 0;
+  font: 600 0.875rem/1.4 var(--mono);
   font-variant-numeric: tabular-nums;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.tabs { display: flex; flex: none; border-bottom: 1px solid var(--rule); }
-.tabs button {
-  flex: 1; padding: 0.7rem 0.5rem;
-  border: 0; border-bottom: 2px solid transparent;
-  background: transparent; color: var(--dim); cursor: pointer;
-  font: 600 0.6875rem/1 var(--cond);
-  letter-spacing: 0.16em; text-transform: uppercase;
+.tabs {
+  display: flex;
+  flex: none;
+  border-bottom: 1px solid var(--rule);
 }
-.tabs button:hover { color: var(--chalk); background: var(--ink-2); }
-.tabs button[aria-pressed="true"] { color: var(--chalk); border-bottom-color: var(--accent); }
+.tabs button {
+  flex: 1;
+  padding: 0.7rem 0.5rem;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--dim);
+  cursor: pointer;
+  font: 600 0.6875rem/1 var(--cond);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+.tabs button:hover {
+  color: var(--chalk);
+  background: var(--ink-2);
+}
+.tabs button[aria-pressed="true"] {
+  color: var(--chalk);
+  border-bottom-color: var(--accent);
+}
 
 .tab {
-  flex: 1; min-height: 0; overflow: auto;
-  display: flex; flex-direction: column; gap: 0.85rem;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
   padding: 1rem 1.25rem 1.5rem;
 }
 
 textarea {
-  flex: 1; min-height: 14rem;
+  flex: 1;
+  min-height: 14rem;
   padding: 0.85rem 1rem;
-  background: var(--panel); color: var(--chalk);
-  border: 1px solid var(--rule); border-radius: 3px;
+  background: var(--panel);
+  color: var(--chalk);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
   font: 400 0.8125rem/1.65 var(--mono);
-  resize: none; tab-size: 2;
+  resize: none;
+  tab-size: 2;
 }
-textarea::placeholder { color: var(--dim); }
-#snippet { flex: none; height: 9rem; }
+textarea::placeholder {
+  color: var(--dim);
+}
+#snippet {
+  flex: none;
+  height: 9rem;
+}
 
 /* A scene that fails to prepare is annotated, not alarmed about: the margin
    rule marks the passage and the text says what the renderer said. */
 #error {
-  margin: 0; padding: 0.15rem 0 0.15rem 1.1rem;
+  margin: 0;
+  padding: 0.15rem 0 0.15rem 1.1rem;
   border-left: 2px solid var(--accent);
-  font: 400 0.8125rem/1.6 var(--mono); color: var(--chalk);
-  white-space: pre-wrap; overflow-wrap: anywhere;
+  font: 400 0.8125rem/1.6 var(--mono);
+  color: var(--chalk);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 /* ── layers and catalog ───────────────────────────────────────────────── */
-ul { margin: 0; padding: 0; list-style: none; }
+ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
 
 #layers li {
-  display: flex; align-items: baseline; gap: 0.6rem;
-  padding: 0.5rem 0.6rem; border-radius: 3px;
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  padding: 0.5rem 0.6rem;
+  border-radius: 3px;
   font: 600 0.875rem/1.4 var(--mono);
   cursor: pointer;
 }
-#layers li:hover { background: var(--ink-2); }
-#layers li[aria-pressed="true"] { background: var(--accent-soft); }
-#layers li.none { color: var(--dim); font: 400 0.875rem/1.5 var(--sans); cursor: default; }
-#layers li.none:hover { background: transparent; }
+#layers li:hover {
+  background: var(--ink-2);
+}
+#layers li[aria-pressed="true"] {
+  background: var(--accent-soft);
+}
+#layers li.none {
+  color: var(--dim);
+  font: 400 0.875rem/1.5 var(--sans);
+  cursor: default;
+}
+#layers li.none:hover {
+  background: transparent;
+}
 
 /* The type is where the layer comes from, not what it is called: a hairline
    box in the label hand, the same shape for every effect. */
 .type {
   margin-left: auto;
-  padding: 0.05rem 0.4rem; border: 1px solid var(--rule); border-radius: 2px;
+  padding: 0.05rem 0.4rem;
+  border: 1px solid var(--rule);
+  border-radius: 2px;
   font: 600 0.6875rem/1.5 var(--cond);
-  letter-spacing: 0.1em; text-transform: uppercase; color: var(--dim);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--dim);
 }
 
 #catalog li {
-  display: grid; grid-template-columns: 8.5rem minmax(0, 1fr); gap: 0.6rem;
+  display: grid;
+  grid-template-columns: 8.5rem minmax(0, 1fr);
+  gap: 0.6rem;
   padding: 0.35rem 0.6rem;
   border-bottom: 1px solid var(--rule-soft);
 }
-#catalog li:last-child { border-bottom: 0; }
-#catalog b { font: 600 0.8125rem/1.6 var(--mono); font-weight: 600; }
-#catalog span { color: var(--dim); font-size: 0.875rem; }
+#catalog li:last-child {
+  border-bottom: 0;
+}
+#catalog b {
+  font: 600 0.8125rem/1.6 var(--mono);
+  font-weight: 600;
+}
+#catalog span {
+  color: var(--dim);
+  font-size: 0.875rem;
+}
 
-.shapes { display: flex; gap: 0.4rem; align-items: center; }
+.shapes {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
 
 /* ── disclosure ───────────────────────────────────────────────────────── */
 .explain summary {
-  display: inline-flex; align-items: center; gap: 0.5rem; cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
   padding: 0.5rem 0.7rem;
-  border: 1px solid var(--rule); border-radius: 3px;
-  background: var(--panel); color: var(--dim);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  background: var(--panel);
+  color: var(--dim);
   font: 600 0.6875rem/1 var(--cond);
-  letter-spacing: 0.14em; text-transform: uppercase;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
   list-style: none;
 }
-.explain summary::-webkit-details-marker { display: none; }
-.explain summary::before {
-  content: "+"; color: var(--accent); font: 400 0.9375rem/1 var(--mono);
+.explain summary::-webkit-details-marker {
+  display: none;
 }
-.explain[open] summary::before { content: "\2212"; }
-.explain summary:hover { color: var(--chalk); border-color: var(--dim); }
+.explain summary::before {
+  content: "+";
+  color: var(--accent);
+  font: 400 0.9375rem/1 var(--mono);
+}
+.explain[open] summary::before {
+  content: "\2212";
+}
+.explain summary:hover {
+  color: var(--chalk);
+  border-color: var(--dim);
+}
 .explain > div {
-  margin-top: 1rem; padding: 0.15rem 0 0.15rem 1.1rem;
+  margin-top: 1rem;
+  padding: 0.15rem 0 0.15rem 1.1rem;
   border-left: 2px solid var(--accent);
 }
-.explain p { margin: 0 0 0.7rem; font-size: 0.875rem; }
-.explain p:last-child { margin-bottom: 0; }
+.explain p {
+  margin: 0 0 0.7rem;
+  font-size: 0.875rem;
+}
+.explain p:last-child {
+  margin-bottom: 0;
+}
 
 /* ── narrow ───────────────────────────────────────────────────────────── */
 /* Under about a laptop the two panes stop being two panes: the plate keeps a
    readable height and the sheet goes under it, with the page doing the
    scrolling instead of each pane doing its own. */
 @media (max-width: 62rem) {
-  body { height: auto; min-height: 100vh; }
-  main { grid-template-columns: minmax(0, 1fr); }
-  #viewport { min-height: 60vh; }
-  .sheet { border-left: 0; border-top: 1px solid var(--rule); }
-  .tab { overflow: visible; }
-  .topbar > div { flex-wrap: wrap; }
+  body {
+    height: auto;
+    min-height: 100vh;
+  }
+  main {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  #viewport {
+    min-height: 60vh;
+  }
+  .sheet {
+    border-left: 0;
+    border-top: 1px solid var(--rule);
+  }
+  .tab {
+    overflow: visible;
+  }
+  .topbar > div {
+    flex-wrap: wrap;
+  }
   /* The loaded file's name and size is a note, not a control, and once the bar
      has to wrap it costs a whole row. Only while it is a note: `fail` puts
      errors in the same line, and those have nowhere else to appear. */
-  #status:not(.bad) { display: none; }
-  #status { order: 10; flex-basis: 100%; }
+  #status:not(.bad) {
+    display: none;
+  }
+  #status {
+    order: 10;
+    flex-basis: 100%;
+  }
 }
 
 @media (max-width: 34rem) {
-  .topbar > div { padding: 0.75rem 1rem; gap: 0.75rem; }
-  .topbar nav { display: none; }
-  .transport { flex-wrap: wrap; }
-  #scrub { order: 10; flex-basis: 100%; }
+  .topbar > div {
+    padding: 0.75rem 1rem;
+    gap: 0.75rem;
+  }
+  .topbar nav {
+    display: none;
+  }
+  .transport {
+    flex-wrap: wrap;
+  }
+  #scrub {
+    order: 10;
+    flex-basis: 100%;
+  }
 }

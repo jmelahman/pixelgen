@@ -58,6 +58,8 @@ function starter() {
   }
 }
 
+el('drop').addEventListener('click', () => el('file').click());
+
 el('file').addEventListener('change', (e) => {
   if (e.target.files[0]) open(e.target.files[0]).catch(fail);
 });

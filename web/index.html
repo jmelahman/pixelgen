@@ -38,15 +38,10 @@
            and for the outline being drawn. -->
       <canvas id="overlay" width="16" height="16"></canvas>
 
-      <div id="drop">
-        <p class="eyebrow">No plate loaded</p>
-        <p class="lede">Drop a photograph anywhere on this page, or open one above.</p>
-        <p class="quiet">
-          It is decoded to a canvas and handed straight to the renderer
-          compiled to wasm. Nothing is uploaded; there is no server to send it
-          to.
-        </p>
-      </div>
+      <!-- Nothing is uploaded; the image is decoded to a canvas and handed
+           straight to the renderer compiled to wasm. Dropping one anywhere on
+           the page works too. -->
+      <button id="drop" type="button">Open an image <span>or drag and drop</span></button>
     </div>
 
     <div class="transport">
