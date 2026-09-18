@@ -3,6 +3,7 @@
 // state honest about what has actually been prepared.
 
 import init, { Session, effects } from './pkg/pixelgen_wasm.js';
+import { setLayerDisabled, setScalar } from './scene-text.js';
 
 const el = (id) => document.getElementById(id);
 const view = el('view');
@@ -81,8 +82,9 @@ el('yaml').addEventListener('input', () => {
   pending = setTimeout(apply, 300);
 });
 
+// Builds the scene in the box. Returns whether it could.
 function apply() {
-  if (!state.session) return;
+  if (!state.session) return false;
   try {
     state.session.set_scene(el('yaml').value);
     el('error').hidden = true;
@@ -92,7 +94,7 @@ function apply() {
     // toward every time a half-typed line is momentarily invalid.
     el('error').hidden = false;
     el('error').textContent = e.message ?? String(e);
-    return;
+    return false;
   }
 
   const s = state.session;
@@ -112,15 +114,129 @@ function apply() {
   layerList(s.layers, s.layer_types);
   if (state.maskLayer !== null && state.maskLayer >= s.layers.length) state.maskLayer = null;
 
-  stat('grid', `${s.width}x${s.height}`);
-  stat('loop', `${s.frames}f @ ${s.fps}`);
-  stat('colors', s.palette.length);
-  stat('layers', s.layers.length || '-');
+  titleblock(s);
+  // The timer was set for the rate the loop had when Play was pressed.
+  if (state.playing) play();
   draw();
+  return true;
 }
 
-function stat(name, value) {
-  document.querySelector(`[data-stat="${name}"]`).textContent = value;
+// ---------------------------------------------------------------- title block
+
+// The figures over the YAML, which are also the quickest way to change them.
+function titleblock(s) {
+  for (const id of ['set-width', 'set-seconds', 'set-fps', 'set-colors']) el(id).disabled = false;
+  el('set-width').value = s.width;
+  el('grid-h').textContent = `\u00d7 ${s.height}`;
+  el('set-seconds').value = s.seconds;
+  el('set-fps').value = s.fps;
+  el('set-seconds').parentElement.title = `${s.frames} frames`;
+
+  // A fixed palette.hex has nothing to cluster, so the count is only a fact.
+  el('set-colors').value = s.palette_derived ? s.colors : s.palette.length;
+  el('set-colors').disabled = !s.palette_derived;
+  el('set-colors').title = s.palette_derived ? 'palette.colors' : 'Fixed by palette.hex';
+
+  const all = JSON.parse(s.scene_layers());
+  const on = all.filter((l) => !l.disable).length;
+  el('layer-count').textContent = all.length === on ? `${on}` : `${on}/${all.length}`;
+  el('layer-menu').inert = !all.length;
+  if (!all.length) el('layer-menu').open = false;
+  el('layer-toggles').replaceChildren(...all.map((l, i) => {
+    const label = document.createElement('label');
+    const box = document.createElement('input');
+    box.type = 'checkbox';
+    box.checked = !l.disable;
+    box.addEventListener('change', () => edit((t) => setLayerDisabled(t, i, !box.checked)));
+    const chip = document.createElement('span');
+    chip.className = 'type';
+    chip.textContent = l.type;
+    label.append(box, l.name, chip);
+    return label;
+  }));
+}
+
+// Rewrites the scene text and applies it straight away. The text is the one
+// source of truth, so a control never touches the session directly.
+function edit(change) {
+  let text;
+  try {
+    text = change(el('yaml').value);
+  } catch (e) {
+    fail(e);
+    // The browser has already moved the control - ticked the box, or taken
+    // the typed number - so without this it would go on claiming a change
+    // that never reached the text.
+    titleblock(state.session);
+    return;
+  }
+  write(text);
+  clearTimeout(pending);
+  // A text that no longer builds leaves the previous scene on screen, and the
+  // controls say what that scene is rather than what was asked for.
+  if (!apply()) titleblock(state.session);
+}
+
+// Replaces the scene text the way typing would, as one step in the box's own
+// undo history. Assigning to .value wipes that history, which would make a
+// header control the one edit Ctrl+Z cannot see past - and take everything
+// typed before it along too.
+function write(text) {
+  const box = el('yaml');
+  const old = box.value;
+  if (text === old) return;
+
+  // Only the span that differs is replaced, so the rest of the text, and the
+  // reader's place in it, is left alone.
+  let a = 0;
+  while (a < old.length && a < text.length && old[a] === text[a]) a++;
+  let b = 0;
+  while (b < old.length - a && b < text.length - a && old.at(-1 - b) === text.at(-1 - b)) b++;
+  const mid = text.slice(a, text.length - b);
+
+  const back = document.activeElement;
+  const { selectionStart, selectionEnd, scrollTop } = box;
+  box.focus({ preventScroll: true });
+  box.setSelectionRange(a, old.length - b);
+  // execCommand is deprecated, but it is still the only edit a textarea's undo
+  // stack records. A box on a hidden tab cannot take focus, and gets a plain
+  // assignment - and loses its history - instead.
+  const typed = document.activeElement === box
+    && document.execCommand(mid ? 'insertText' : 'delete', false, mid);
+  if (!typed) {
+    box.value = text;
+    return;
+  }
+
+  const moved = (p) => (p <= a ? p : p >= old.length - b ? p + text.length - old.length : a + mid.length);
+  box.setSelectionRange(moved(selectionStart), moved(selectionEnd));
+  box.scrollTop = scrollTop;
+  if (back && back !== document.body) back.focus({ preventScroll: true });
+  else box.blur();
+}
+
+// `change` rather than `input`: typing 320 would otherwise prepare a scene at
+// width 3 and then 32 on the way there.
+for (const [id, path, whole] of [
+  ['set-width', ['width'], true],
+  ['set-seconds', ['loop', 'seconds'], false],
+  ['set-fps', ['loop', 'fps'], true],
+  ['set-colors', ['palette', 'colors'], true],
+]) {
+  const input = el(id);
+  input.addEventListener('change', () => {
+    let v = input.valueAsNumber;
+    // An emptied field puts back what the scene says rather than writing a
+    // blank into it.
+    if (!Number.isFinite(v)) return titleblock(state.session);
+    if (whole) v = Math.round(v);
+    // The browser holds a typed number to neither bound, and the renderer has
+    // no ceiling of its own: a width of 999999 would try to build that grid.
+    // The field's own min and max are the limits, so the page cannot offer one
+    // range and write another.
+    v = Math.min(+input.max, Math.max(+input.min, v));
+    edit((t) => setScalar(t, path, v));
+  });
 }
 
 // Scales the plate to fill the space it has.
@@ -445,7 +561,7 @@ el('save-video').addEventListener('click', () => saving('Recording…', async ()
 // A menu left open after the pointer has gone elsewhere is just a panel in
 // the way.
 document.addEventListener('click', (e) => {
-  if (!el('save').contains(e.target)) el('save').open = false;
+  for (const id of ['save', 'layer-menu']) if (!el(id).contains(e.target)) el(id).open = false;
 });
 
 function download(blob, name) {

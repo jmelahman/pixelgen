@@ -69,12 +69,34 @@
 
   <aside class="sheet">
     <!-- The scene as built, set as a drawing's title block: what the numbers
-         in the YAML actually resolved to for this image. -->
+         in the YAML actually resolved to for this image. Each one is also a
+         control, which rewrites its own line of the YAML and nothing else. -->
     <dl class="titleblock">
-      <div><dt>grid</dt><dd data-stat="grid">&mdash;</dd></div>
-      <div><dt>loop</dt><dd data-stat="loop">&mdash;</dd></div>
-      <div><dt>colors</dt><dd data-stat="colors">&mdash;</dd></div>
-      <div><dt>layers</dt><dd data-stat="layers">&mdash;</dd></div>
+      <div>
+        <dt><label for="set-width">grid</label></dt>
+        <dd><input id="set-width" type="number" min="8" max="2048" placeholder="&mdash;" disabled
+                   title="width: grid width in cells"><span id="grid-h">&times; &mdash;</span></dd>
+      </div>
+      <div>
+        <dt><label for="set-seconds">loop</label></dt>
+        <dd><input id="set-seconds" type="number" min="0.5" max="120" step="0.5" placeholder="&mdash;" disabled
+                   title="loop.seconds"><span>s @</span><input id="set-fps" type="number"
+                   min="1" max="60" placeholder="&mdash;" disabled title="loop.fps" aria-label="Frames per second"></dd>
+      </div>
+      <div>
+        <dt><label for="set-colors">colors</label></dt>
+        <dd><input id="set-colors" type="number" min="2" max="256" placeholder="&mdash;" disabled
+                   title="palette.colors"></dd>
+      </div>
+      <div>
+        <dt>layers</dt>
+        <dd>
+          <details class="menu down" id="layer-menu" inert>
+            <summary id="layer-count">&mdash;</summary>
+            <div id="layer-toggles"></div>
+          </details>
+        </dd>
+      </div>
     </dl>
 
     <nav class="tabs">

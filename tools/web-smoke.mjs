@@ -184,6 +184,40 @@ const out = empty ? { boxes: [[0, 0, 0, 0], [0, 0, 0, 0]], grid: [0, 0] } : awai
   const s = window.pixelgen.state.session;
   const view = document.getElementById('view');
 
+  // The title block's controls, which write to the YAML rather than to the
+  // session: each has to land in the text and come back out of the renderer.
+  const set = (id, v) => {
+    const input = document.getElementById(id);
+    input.value = v;
+    input.dispatchEvent(new Event('change'));
+  };
+  set('set-width', 96);
+  set('set-seconds', 2);
+  set('set-fps', 10);
+  set('set-colors', 12);
+  document.querySelector('#layer-toggles input').click();
+  const yaml = document.getElementById('yaml').value;
+  const titleblock = {
+    width: s.width, frames: s.frames, colors: s.colors,
+    count: document.getElementById('layer-count').textContent,
+    text: ['width: 96', 'seconds: 2', 'fps: 10', 'colors: 12', 'disable: true'].filter((l) => !yaml.includes(l)),
+    comments: yaml.startsWith('# Generated'),
+  };
+  document.querySelector('#layer-toggles input').click();
+  titleblock.reenabled = !document.getElementById('yaml').value.includes('disable: true');
+
+  // A typed number is held to the field's own bounds rather than written as
+  // typed, and the edit is a step in the box's undo history rather than the
+  // end of it.
+  set('set-fps', 1000);
+  titleblock.clamped = s.fps;
+  const box = document.getElementById('yaml');
+  box.focus();
+  document.execCommand('undo');
+  box.blur();
+  window.pixelgen.apply();
+  titleblock.undone = s.fps;
+
   // Playback, a scrub, and a mask overlay: the three things that touch the
   // canvas from different directions.
   document.getElementById('play').click();
@@ -208,6 +242,7 @@ const out = empty ? { boxes: [[0, 0, 0, 0], [0, 0, 0, 0]], grid: [0, 0] } : awai
   }
 
   return {
+    titleblock,
     grid: [view.width, view.height],
     // The drawn size of both canvases. They must agree: a click on the overlay
     // becomes a fraction of the frame by way of its box, so the two boxes
@@ -286,6 +321,14 @@ if (out.counter !== `6/${out.frames}`) bad.push('scrub did not move the frame: '
 if (!/^polygon:(\n\s+- \{ x: [\d.]+, y: [\d.]+ \}){3}$/.test(out.snippet)) {
   bad.push('mask editor emitted: ' + JSON.stringify(out.snippet));
 }
+const tb = out.titleblock;
+if (tb.text.length) bad.push('title block did not write ' + JSON.stringify(tb.text));
+if (tb.width !== 96 || tb.frames !== 20 || tb.colors !== 12) bad.push('title block edits did not reach the renderer: ' + JSON.stringify(tb));
+if (!/^\d+\/\d+$/.test(tb.count)) bad.push('disabling a layer left the count at ' + tb.count);
+if (!tb.comments) bad.push('title block edits lost the scene comments');
+if (!tb.reenabled) bad.push('re-enabling a layer left disable: true in the scene');
+if (tb.clamped !== 60) bad.push('fps 1000 was written as ' + tb.clamped + ', not held to the field max of 60');
+if (tb.undone !== 10) bad.push('undo in the scene box did not take back a title block edit: fps is ' + tb.undone);
 if (errors.length) bad.push(errors.length + ' console errors');
 
 if (bad.length) {

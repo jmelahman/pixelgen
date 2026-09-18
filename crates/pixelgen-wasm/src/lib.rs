@@ -146,6 +146,47 @@ impl Session {
         self.scene.layers.iter().filter(|l| !l.disable).map(|l| l.r#type.clone()).collect()
     }
 
+    /// Loop length as written, which `frames` rounds to a whole frame count.
+    #[wasm_bindgen(getter)]
+    pub fn seconds(&self) -> f64 {
+        self.scene.loop_.seconds
+    }
+
+    /// `palette.colors` as written. The palette itself can come out smaller:
+    /// an image with fewer distinct colors cannot be clustered into more.
+    #[wasm_bindgen(getter)]
+    pub fn colors(&self) -> usize {
+        self.scene.palette.colors
+    }
+
+    /// Every layer in the scene, disabled ones included, as JSON
+    /// `[{"name","type","disable"}]` in file order - the order the editor
+    /// needs to find each one in the YAML text again.
+    pub fn scene_layers(&self) -> String {
+        let body: Vec<String> = self
+            .scene
+            .layers
+            .iter()
+            .enumerate()
+            .map(|(i, l)| {
+                format!(
+                    "{{\"name\":{},\"type\":{},\"disable\":{}}}",
+                    quote(&l.label(i)),
+                    quote(&l.r#type),
+                    l.disable
+                )
+            })
+            .collect();
+        format!("[{}]", body.join(","))
+    }
+
+    /// Whether the palette is derived from the image, and so whether
+    /// `palette.colors` means anything. A fixed `hex` list ignores it.
+    #[wasm_bindgen(getter)]
+    pub fn palette_derived(&self) -> bool {
+        self.scene.palette.hex.is_empty()
+    }
+
     /// The scene palette as `#rrggbb`, in the renderer's own order - adjacent
     /// entries are adjacent shades, which is what makes `palette_cycle` read
     /// as flow and what the editor should preserve when showing swatches.

@@ -497,10 +497,17 @@ main {
 
 /* Both labels share one cell so the button is always as wide as "Pause" and
    the scrubber beside it does not jump when playback toggles. */
-#play { display: inline-grid; justify-items: center; }
-#play > span { grid-area: 1 / 1; }
+#play {
+  display: inline-grid;
+  justify-items: center;
+}
+#play > span {
+  grid-area: 1 / 1;
+}
 #play:not(.playing) > span:last-child,
-#play.playing > span:first-child { visibility: hidden; }
+#play.playing > span:first-child {
+  visibility: hidden;
+}
 
 #counter {
   font: 400 0.8125rem/1 var(--mono);
@@ -610,6 +617,99 @@ main {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.titleblock dt label {
+  cursor: pointer;
+}
+
+/* The values are the controls. They read as the figures they replace until
+   hovered, when a hairline under them says they can be changed. */
+.titleblock input {
+  width: 4ch;
+  field-sizing: content;
+  min-width: 1ch;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px dashed transparent;
+  border-radius: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+.titleblock input::-webkit-inner-spin-button,
+.titleblock input::-webkit-outer-spin-button {
+  appearance: none;
+  margin: 0;
+}
+.titleblock input::placeholder {
+  color: inherit;
+  opacity: 1;
+}
+.titleblock input:not(:disabled):hover {
+  border-bottom-color: var(--dim);
+}
+.titleblock input:focus {
+  outline: none;
+  border-bottom: 1px solid var(--accent);
+}
+.titleblock dd span {
+  color: var(--dim);
+}
+.titleblock dd span + input {
+  margin-left: 0.5ch;
+}
+/* Seconds sits against its "s", however few digits it has. */
+#set-seconds {
+  width: 2ch;
+}
+
+/* The layer count opens a list of every layer, drawn or not. */
+.titleblock dd:has(.menu) {
+  overflow: visible;
+}
+.menu.down > summary {
+  display: inline-block;
+  border-bottom: 1px dashed transparent;
+}
+.menu.down:not([inert]) > summary:hover {
+  border-bottom-color: var(--dim);
+}
+.menu.down[inert] > summary {
+  opacity: 1;
+}
+.menu.down[open] > summary {
+  background: none;
+  border-bottom: 1px solid var(--accent);
+}
+.menu.down > div {
+  top: calc(100% + 0.4rem);
+  bottom: auto;
+  min-width: 16rem;
+}
+.menu.down label {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--rule-soft);
+  font: 400 0.8125rem/1.4 var(--mono);
+  cursor: pointer;
+}
+.menu.down label:last-child {
+  border-bottom: 0;
+}
+.menu.down label:hover {
+  background: var(--ink-2);
+}
+.menu.down label input {
+  accent-color: var(--accent);
+  margin: 0;
+}
+.menu.down label:has(input:not(:checked)) {
+  color: var(--dim);
 }
 
 .tabs {
