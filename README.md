@@ -73,7 +73,7 @@ regions:
   outside:
     all:
       - rect: { x: 0.11, y: 0.0, w: 0.75, h: 0.82 }
-      - chroma: { min: 0.30 }   # positive is cool, negative is warm
+      - chroma: { min: 0.30 } # positive is cool, negative is warm
   indoors:
     ref: outside
     invert: true
@@ -112,11 +112,11 @@ natively and need nothing.
 
 ### Layout
 
-| Crate | Contents |
-| --- | --- |
+| Crate                  | Contents                                                                                                                                                            |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `crates/pixelgen-core` | The whole renderer: masks, palette, effects, scene format. No file, process or network I/O; rayon is the only non-`serde` dependency and it is compiled out on wasm |
-| `crates/pixelgen-cli` | The `pixelgen` binary: image decoding, ffmpeg, GIF writing |
-| `crates/pixelgen-wasm` | `wasm-bindgen` wrapper around the core, for the browser UI |
+| `crates/pixelgen-cli`  | The `pixelgen` binary: image decoding, ffmpeg, GIF writing                                                                                                          |
+| `crates/pixelgen-wasm` | `wasm-bindgen` wrapper around the core, for the browser UI                                                                                                          |
 
 The split is load-bearing rather than cosmetic. The core never opens a file —
 `palette.file` is reported to the host and folded back in by
@@ -139,7 +139,7 @@ Nothing is uploaded and there is no build step beyond the wasm: the page is
 three static files and a `<script type="module">`.
 
 The editor is worth using for one thing in particular. A `chroma` or `luma`
-selector is defined by what it catches in *this* image, which cannot be read off
+selector is defined by what it catches in _this_ image, which cannot be read off
 the YAML — clicking a layer draws its resolved mask over the frame, so the
 silhouette it actually cuts is visible before anything is animated.
 
@@ -152,13 +152,13 @@ lossy and browser-dependent; the CLI is still the way to produce a final loop.
 
 ## Commands
 
-| Command | What it does |
-| --- | --- |
+| Command                     | What it does                              |
+| --------------------------- | ----------------------------------------- |
 | `pixelgen pixelate <image>` | Reduce to a pixel grid, write a still PNG |
-| `pixelgen animate <image>` | Render a seamless loop |
-| `pixelgen init <image>` | Write a starter scene file |
-| `pixelgen palette <image>` | Print the derived palette as hex |
-| `pixelgen effects` | List available effect types |
+| `pixelgen animate <image>`  | Render a seamless loop                    |
+| `pixelgen init <image>`     | Write a starter scene file                |
+| `pixelgen palette <image>`  | Print the derived palette as hex          |
+| `pixelgen effects`          | List available effect types               |
 
 Common flags: `--width` (grid width in cells), `--colors` (palette size),
 `--dither` (0..1), `--median`, `--saturation`, `--contrast`,
@@ -192,7 +192,7 @@ width: 320
 seed: 1
 
 palette:
-  colors: 32       # or: hex: ["#1a1c2c", ...] / file: palette.hex
+  colors: 32 # or: hex: ["#1a1c2c", ...] / file: palette.hex
   dither: 0.6
 
 prepare:
@@ -222,23 +222,20 @@ layers:
 
 ### Mask selectors
 
-| Selector | Selects |
-| --- | --- |
-| `rect: {x, y, w, h}` | A box, in normalized `0..1` coordinates |
-| `ellipse: {x, y, w, h}` | An ellipse inscribed in that box |
-| `polygon: [{x, y}, ...]` | An arbitrary outline |
-| `band: {axis, start, end}` | A soft gradient along `x` or `y`; reversed if `end < start` |
-| `luma: {min, max}` | Pixels in a brightness range |
-| `color: {hex, tolerance}` | Pixels near one colour |
-| `chroma: {min, max, soft}` | Pixels in a colour-temperature range |
-| `ref: <name>` | A region declared in `regions:` |
-| `all: [...]` / `any: [...]` | Intersection / union |
+| Selector                    | Selects                                                     |
+| --------------------------- | ----------------------------------------------------------- |
+| `rect: {x, y, w, h}`        | A box, in normalized `0..1` coordinates                     |
+| `ellipse: {x, y, w, h}`     | An ellipse inscribed in that box                            |
+| `polygon: [{x, y}, ...]`    | An arbitrary outline                                        |
+| `band: {axis, start, end}`  | A soft gradient along `x` or `y`; reversed if `end < start` |
+| `luma: {min, max}`          | Pixels in a brightness range                                |
+| `color: {hex, tolerance}`   | Pixels near one colour                                      |
+| `chroma: {min, max, soft}`  | Pixels in a colour-temperature range                        |
+| `ref: <name>`               | A region declared in `regions:`                             |
+| `all: [...]` / `any: [...]` | Intersection / union                                        |
 
 Modifiers `invert`, `feather` (blur radius in cells) and `gain` apply to any of
 them, in that order.
-
-See `examples/porch.scene.yaml` for a fully commented scene, and
-`examples/demo.scene.yaml` for what `init` generates before editing.
 
 Unknown keys are rejected at load time, so a typo fails immediately instead of
 silently disabling a layer.
@@ -248,21 +245,21 @@ silently disabling a layer.
 Parameters named `speed`, `rotations`, `period` and `dir_*` are counted **per
 loop** and must be whole numbers; that is what makes the loop close.
 
-| Type | Purpose | Key parameters |
-| --- | --- | --- |
-| `rain` | Falling streaks in parallax layers | `count`, `speed`, `layers`, `length`, `slant`, `opacity`, `color` |
-| `mist` | Drifting fog from tiling fractal noise | `scale`, `period`, `dir_x`, `dir_y`, `threshold`, `softness`, `opacity`, `octaves` |
-| `steam` | Wisps rising out of the region | `scale`, `rise`, `threshold`, `opacity`, `wobble` |
-| `flicker` | Brightness and temperature wobble on a light | `amount`, `speed`, `turbulence`, `warmth`, `color` |
-| `glow` | Pulsing bloom radiating from bright pixels | `radius`, `threshold`, `intensity`, `pulse`, `speed`, `color` |
-| `twinkle` | Per-pixel sparkle on highlights | `threshold`, `amount`, `speed`, `color` |
-| `sway` | Bend a region side to side | `amplitude`, `anchor`, `speed`, `wavelength`, `noise` |
-| `shimmer` | Rippling displacement for water | `amplitude`, `wavelength`, `speed`, `axis` |
-| `drift` | Scroll a region, wrapping inside itself | `speed_x`, `speed_y`, `wrap` |
-| `palette_cycle` | Rotate a contiguous palette range | `start`, `count`, `rotations` |
-| `vignette` | Darken the frame edges | `amount`, `radius` |
-| `scanlines` | CRT line darkening | `amount`, `period` |
-| `breathe` | Slow global brightness swell | `amount`, `speed` |
+| Type            | Purpose                                      | Key parameters                                                                     |
+| --------------- | -------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `rain`          | Falling streaks in parallax layers           | `count`, `speed`, `layers`, `length`, `slant`, `opacity`, `color`                  |
+| `mist`          | Drifting fog from tiling fractal noise       | `scale`, `period`, `dir_x`, `dir_y`, `threshold`, `softness`, `opacity`, `octaves` |
+| `steam`         | Wisps rising out of the region               | `scale`, `rise`, `threshold`, `opacity`, `wobble`                                  |
+| `flicker`       | Brightness and temperature wobble on a light | `amount`, `speed`, `turbulence`, `warmth`, `color`                                 |
+| `glow`          | Pulsing bloom radiating from bright pixels   | `radius`, `threshold`, `intensity`, `pulse`, `speed`, `color`                      |
+| `twinkle`       | Per-pixel sparkle on highlights              | `threshold`, `amount`, `speed`, `color`                                            |
+| `sway`          | Bend a region side to side                   | `amplitude`, `anchor`, `speed`, `wavelength`, `noise`                              |
+| `shimmer`       | Rippling displacement for water              | `amplitude`, `wavelength`, `speed`, `axis`                                         |
+| `drift`         | Scroll a region, wrapping inside itself      | `speed_x`, `speed_y`, `wrap`                                                       |
+| `palette_cycle` | Rotate a contiguous palette range            | `start`, `count`, `rotations`                                                      |
+| `vignette`      | Darken the frame edges                       | `amount`, `radius`                                                                 |
+| `scanlines`     | CRT line darkening                           | `amount`, `period`                                                                 |
+| `breathe`       | Slow global brightness swell                 | `amount`, `speed`                                                                  |
 
 `palette_cycle` works because the palette is sorted into hue-then-luma ramps, so
 adjacent indices are adjacent shades and rotating a range reads as flow.
