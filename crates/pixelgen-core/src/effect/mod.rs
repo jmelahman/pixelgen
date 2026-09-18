@@ -56,10 +56,17 @@ pub trait Effect: Send + Sync {
 
 #[derive(Debug)]
 pub enum Error {
-    UnknownType { name: String, known: Vec<&'static str> },
+    UnknownType {
+        name: String,
+        known: Vec<&'static str>,
+    },
     BadParams(String),
     /// A parameter counted per loop that was given a value which cannot close.
-    NotWhole { effect: &'static str, param: &'static str, value: i32 },
+    NotWhole {
+        effect: &'static str,
+        param: &'static str,
+        value: i32,
+    },
 }
 
 impl fmt::Display for Error {

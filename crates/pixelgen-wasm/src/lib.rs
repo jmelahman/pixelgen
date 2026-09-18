@@ -83,8 +83,7 @@ impl Session {
     /// `name` is only used for the scene's `name:` and `source:` fields; the
     /// browser has no path to record.
     pub fn starter(&self, name: &str) -> Result<String, JsError> {
-        let mut s = Scene::default();
-        s.source = name.into();
+        let s = Scene { source: name.into(), ..Default::default() };
         let (base, _) = render::pixelate(&self.src, &s).map_err(err)?;
         Ok(starter::starter(&s, name, &base).0)
     }
@@ -207,8 +206,8 @@ impl Session {
     /// layer. `spec` is a YAML mask block, as it would appear under `mask:`.
     pub fn preview_mask(&self, spec: &str) -> Result<Vec<u8>, JsError> {
         let p = self.prepared()?;
-        let spec: Spec = serde_yaml::from_str(spec)
-            .map_err(|e| JsError::new(&format!("parsing mask: {e}")))?;
+        let spec: Spec =
+            serde_yaml::from_str(spec).map_err(|e| JsError::new(&format!("parsing mask: {e}")))?;
         let mut b = Builder::new(&p.base, &self.scene.regions);
         let m = b.build(Some(&spec)).map_err(err)?;
         Ok(coverage(&m, p.base.w, p.base.h))

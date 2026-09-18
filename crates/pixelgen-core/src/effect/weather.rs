@@ -85,7 +85,14 @@ impl Effect for Rain {
                         // Taper both ends of the streak; a constant-alpha
                         // segment reads as a stick rather than motion blur.
                         let taper = smooth_step(0.0, l * 0.35, s) * smooth_step(l, l * 0.6, s);
-                        dst.blend(xi, yi, self.color.r, self.color.g, self.color.b, alpha_l * taper * cov);
+                        dst.blend(
+                            xi,
+                            yi,
+                            self.color.r,
+                            self.color.g,
+                            self.color.b,
+                            alpha_l * taper * cov,
+                        );
                     }
                     s += 1.0;
                 }
@@ -250,7 +257,14 @@ impl Effect for Steam {
                 // A slow horizontal wobble keeps the column from looking
                 // extruded.
                 let wob = self.cfg.wobble
-                    * (noise::looped(0.0, y as f32 * 0.1, ctx.t, 1.0, 1.0, ctx.seed.wrapping_add(17)) - 0.5);
+                    * (noise::looped(
+                        0.0,
+                        y as f32 * 0.1,
+                        ctx.t,
+                        1.0,
+                        1.0,
+                        ctx.seed.wrapping_add(17),
+                    ) - 0.5);
                 let v = noise::drift_fbm(
                     x as f32 + wob,
                     y as f32,

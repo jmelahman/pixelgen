@@ -32,7 +32,11 @@ fn stem(source: &str) -> String {
         Some(i) if i > 0 => &file[..i],
         _ => file,
     };
-    if base.is_empty() { "scene".into() } else { base.into() }
+    if base.is_empty() {
+        "scene".into()
+    } else {
+        base.into()
+    }
 }
 
 pub struct WarmLight {
@@ -66,9 +70,8 @@ pub fn analyze(base: &Image) -> Analysis {
     // Row brightness profile. The most negative step in the top two thirds is
     // usually where an open sky or window gives way to darker foreground,
     // which is the boundary most atmospheric effects want to respect.
-    let row_luma: Vec<f32> = (0..h)
-        .map(|y| (0..w).map(|x| base.luma_at(x, y)).sum::<f32>() / w as f32)
-        .collect();
+    let row_luma: Vec<f32> =
+        (0..h).map(|y| (0..w).map(|x| base.luma_at(x, y)).sum::<f32>() / w as f32).collect();
     let mut best = (0.0f32, h / 3);
     for y in 1..(h * 2 / 3) {
         let drop = row_luma[y - 1] - row_luma[y];
@@ -88,9 +91,8 @@ pub fn analyze(base: &Image) -> Analysis {
     // A dim night scene can have its brightest, most light-like pixels sitting
     // well below any absolute cutoff, and a fixed threshold simply reports
     // that such an image contains no lights at all.
-    let mut sorted: Vec<f32> = (0..h).flat_map(|y| (0..w).map(move |x| (x, y)))
-        .map(|(x, y)| base.luma_at(x, y))
-        .collect();
+    let mut sorted: Vec<f32> =
+        (0..h).flat_map(|y| (0..w).map(move |x| (x, y))).map(|(x, y)| base.luma_at(x, y)).collect();
     sorted.sort_by(f32::total_cmp);
     // Guard against an almost entirely black frame, where the 98th percentile
     // is still shadow and everything would read as a highlight.
@@ -137,11 +139,7 @@ pub fn analyze(base: &Image) -> Analysis {
 }
 
 pub fn template(s: &Scene, source: &str, a: &Analysis) -> String {
-    let name = if s.name.is_empty() {
-        stem(source)
-    } else {
-        s.name.clone()
-    };
+    let name = if s.name.is_empty() { stem(source) } else { s.name.clone() };
     let mut b = String::new();
 
     let _ = write!(

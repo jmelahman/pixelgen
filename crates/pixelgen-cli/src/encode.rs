@@ -101,12 +101,11 @@ fn write_video(frames: &[Image], o: &Options, ext: &str) -> Result<(), Box<dyn E
     let out_w = (w * o.scale) & !1;
     let out_h = (h * o.scale) & !1;
 
-    let mut args: Vec<String> = [
-        "-y", "-hide_banner", "-loglevel", "error", "-f", "rawvideo", "-pixel_format", "rgb24",
-    ]
-    .iter()
-    .map(|s| s.to_string())
-    .collect();
+    let mut args: Vec<String> =
+        ["-y", "-hide_banner", "-loglevel", "error", "-f", "rawvideo", "-pixel_format", "rgb24"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
     args.extend([
         "-video_size".into(),
         format!("{w}x{h}"),

@@ -87,11 +87,7 @@ impl Matcher {
                 img.pix[o] = new.r;
                 img.pix[o + 1] = new.g;
                 img.pix[o + 2] = new.b;
-                let err = [
-                    (old.r - new.r) * s,
-                    (old.g - new.g) * s,
-                    (old.b - new.b) * s,
-                ];
+                let err = [(old.r - new.r) * s, (old.g - new.g) * s, (old.b - new.b) * s];
                 for (dx, dy, f) in [
                     (1, 0, 7.0 / 16.0),
                     (-1, 1, 3.0 / 16.0),
@@ -111,8 +107,8 @@ fn spread(img: &mut Image, x: i32, y: i32, err: &[f32; 3], f: f32) {
         return;
     }
     let o = img.offset(x as usize, y as usize);
-    for c in 0..3 {
-        img.pix[o + c] = (img.pix[o + c] + err[c] * f).clamp(0.0, 1.0);
+    for (c, e) in err.iter().enumerate().take(3) {
+        img.pix[o + c] = (img.pix[o + c] + e * f).clamp(0.0, 1.0);
     }
 }
 
@@ -131,9 +127,9 @@ pub fn nearest_in(pal: &[Rgb], c: Rgb) -> usize {
 
 /// Extract a palette from an image by k-means, seeded with k-means++.
 ///
-/// Plain random seeding regularly loses a small bright element - a lamp, a sign
-/// - into a cluster dominated by the background, and that element is usually
-/// the subject. k-means++ picks seeds spread apart by distance, so a small but
+/// Plain random seeding regularly loses a small bright element (a lamp, a sign)
+/// into a cluster dominated by the background, and that element is usually the
+/// subject. k-means++ picks seeds spread apart by distance, so a small but
 /// distinct colour survives.
 pub fn extract(img: &Image, k: usize, seed: u32) -> Palette {
     let samples = sample_pixels(img, 20_000);
@@ -278,20 +274,12 @@ pub fn parse_hex(s: &str) -> Result<Rgb, HexError> {
     match t.len() {
         6 => {
             let n = u32::from_str_radix(t, 16).map_err(|_| HexError(s.into()))?;
-            Ok(Rgb {
-                r: expand((n >> 16) as u8),
-                g: expand((n >> 8) as u8),
-                b: expand(n as u8),
-            })
+            Ok(Rgb { r: expand((n >> 16) as u8), g: expand((n >> 8) as u8), b: expand(n as u8) })
         }
         3 => {
             let n = u32::from_str_radix(t, 16).map_err(|_| HexError(s.into()))?;
             let c = |v: u32| expand(((v << 4) | v) as u8);
-            Ok(Rgb {
-                r: c((n >> 8) & 0xF),
-                g: c((n >> 4) & 0xF),
-                b: c(n & 0xF),
-            })
+            Ok(Rgb { r: c((n >> 8) & 0xF), g: c((n >> 4) & 0xF), b: c(n & 0xF) })
         }
         _ => Err(HexError(s.into())),
     }

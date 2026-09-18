@@ -238,11 +238,8 @@ fn box_pass(src: &[f32], w: usize, h: usize, r: i32, horizontal: bool) -> Vec<f3
         for x in 0..w {
             let (mut sum, mut n) = (0.0f32, 0.0f32);
             for d in -r..=r {
-                let (xx, yy) = if horizontal {
-                    (x as i32 + d, y as i32)
-                } else {
-                    (x as i32, y as i32 + d)
-                };
+                let (xx, yy) =
+                    if horizontal { (x as i32 + d, y as i32) } else { (x as i32, y as i32 + d) };
                 if xx < 0 || yy < 0 || xx as usize >= w || yy as usize >= h {
                     continue;
                 }

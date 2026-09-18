@@ -72,13 +72,7 @@ pub fn value4(x: f32, y: f32, z: f32, w: f32, seed: u32) -> f32 {
 #[inline]
 pub fn looped(x: f32, y: f32, t: f32, scale: f32, turbulence: f32, seed: u32) -> f32 {
     let ang = t * TAU;
-    value4(
-        x * scale,
-        y * scale,
-        ang.cos() * turbulence,
-        ang.sin() * turbulence,
-        seed,
-    )
+    value4(x * scale, y * scale, ang.cos() * turbulence, ang.sin() * turbulence, seed)
 }
 
 /// Stack octaves of [`looped`] for a field with detail at several scales, the
@@ -101,13 +95,7 @@ pub fn fbm(x: f32, y: f32, t: f32, scale: f32, turbulence: f32, octaves: i32, se
 #[inline]
 pub fn loop1d(id: i32, t: f32, turbulence: f32, seed: u32) -> f32 {
     let ang = t * TAU;
-    value4(
-        id as f32 * 13.7,
-        0.0,
-        ang.cos() * turbulence,
-        ang.sin() * turbulence,
-        seed,
-    )
+    value4(id as f32 * 13.7, 0.0, ang.cos() * turbulence, ang.sin() * turbulence, seed)
 }
 
 /// Reduce `v` into `[0, period)`.

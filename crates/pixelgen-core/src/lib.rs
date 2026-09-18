@@ -11,7 +11,7 @@ pub mod mask;
 pub mod noise;
 pub mod palette;
 pub mod pixel;
-pub mod resample;
 pub mod render;
+pub mod resample;
 pub mod scene;
 pub mod starter;

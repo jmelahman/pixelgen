@@ -1,7 +1,7 @@
 //! Region selection: the shapes, the keyed selectors, and named regions.
 
 use pixelgen_core::mask::{
-    self, Axis, Band, Builder, ColorIn, Chroma, Point, Range, Rect, Registry, Spec,
+    self, Axis, Band, Builder, Chroma, ColorIn, Point, Range, Rect, Registry, Spec,
 };
 use pixelgen_core::pixel::Image;
 
@@ -22,7 +22,10 @@ fn build(spec: Spec, base: &Image) -> mask::Mask {
 #[test]
 fn rect_covers_the_normalized_region() {
     let base = flat(100, 100, 0.5, 0.5, 0.5);
-    let m = build(Spec { rect: Some(Rect { x: 0.25, y: 0.5, w: 0.5, h: 0.25 }), ..Spec::default() }, &base);
+    let m = build(
+        Spec { rect: Some(Rect { x: 0.25, y: 0.5, w: 0.5, h: 0.25 }), ..Spec::default() },
+        &base,
+    );
     assert_eq!(m.at(50, 60), 1.0, "inside the rect");
     assert_eq!(m.at(10, 60), 0.0, "left of the rect");
     assert_eq!(m.at(50, 20), 0.0, "above the rect");
@@ -46,10 +49,8 @@ fn all_intersects_and_any_unions() {
 fn invert_flips_coverage_and_gain_scales_it() {
     let base = flat(10, 10, 0.5, 0.5, 0.5);
     let full = Rect { x: 0.0, y: 0.0, w: 1.0, h: 1.0 };
-    let m = build(
-        Spec { rect: Some(Rect { w: 0.5, ..full }), invert: true, ..Spec::default() },
-        &base,
-    );
+    let m =
+        build(Spec { rect: Some(Rect { w: 0.5, ..full }), invert: true, ..Spec::default() }, &base);
     assert_eq!((m.at(1, 1), m.at(8, 1)), (0.0, 1.0));
 
     let g = build(Spec { rect: Some(full), gain: 0.25, ..Spec::default() }, &base);
@@ -114,11 +115,7 @@ fn band_defaults_to_a_full_ramp() {
 #[test]
 fn polygon_selects_its_interior() {
     let base = flat(100, 100, 0.5, 0.5, 0.5);
-    let tri = vec![
-        Point { x: 0.5, y: 0.0 },
-        Point { x: 1.0, y: 1.0 },
-        Point { x: 0.0, y: 1.0 },
-    ];
+    let tri = vec![Point { x: 0.5, y: 0.0 }, Point { x: 1.0, y: 1.0 }, Point { x: 0.0, y: 1.0 }];
     let m = build(Spec { polygon: tri, ..Spec::default() }, &base);
     assert_eq!(m.at(50, 80), 1.0, "inside the triangle");
     assert_eq!(m.at(5, 5), 0.0, "outside the triangle");
@@ -230,7 +227,10 @@ fn an_undefined_region_is_reported() {
 #[test]
 fn a_region_cycle_is_reported_rather_than_recursed_into() {
     let regions: Registry = [
-        ("a".to_string(), Spec { all: vec![Spec { r#ref: "b".into(), ..Spec::default() }], ..Spec::default() }),
+        (
+            "a".to_string(),
+            Spec { all: vec![Spec { r#ref: "b".into(), ..Spec::default() }], ..Spec::default() },
+        ),
         ("b".to_string(), Spec { r#ref: "a".into(), ..Spec::default() }),
     ]
     .into();

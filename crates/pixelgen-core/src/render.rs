@@ -14,9 +14,17 @@ use crate::scene::Scene;
 
 #[derive(Debug)]
 pub enum Error {
-    Layer { label: String, source: effect::Error },
-    Mask { label: String, source: crate::mask::Error },
-    EmptyMask { label: String },
+    Layer {
+        label: String,
+        source: effect::Error,
+    },
+    Mask {
+        label: String,
+        source: crate::mask::Error,
+    },
+    EmptyMask {
+        label: String,
+    },
     Palette(palette::HexError),
     /// The scene names a palette file, which only the host can open.
     UnresolvedPaletteFile(String),

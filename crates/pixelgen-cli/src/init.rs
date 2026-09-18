@@ -61,9 +61,7 @@ pub fn run(
 /// which is the normal case for `pixelgen init photo.jpg --out /somewhere/`.
 fn relative(target: &Path, from: &Path) -> String {
     let abs = |p: &Path| -> PathBuf {
-        p.canonicalize().unwrap_or_else(|_| {
-            std::env::current_dir().unwrap_or_default().join(p)
-        })
+        p.canonicalize().unwrap_or_else(|_| std::env::current_dir().unwrap_or_default().join(p))
     };
     let target = abs(target);
     let dir = abs(from.parent().filter(|d| !d.as_os_str().is_empty()).unwrap_or(Path::new(".")));

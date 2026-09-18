@@ -362,11 +362,8 @@ impl<'a> Builder<'a> {
             // first.
             return Ok(m.clone());
         }
-        let spec = self
-            .regions
-            .get(name)
-            .ok_or_else(|| Error::UnknownRegion(name.to_string()))?
-            .clone();
+        let spec =
+            self.regions.get(name).ok_or_else(|| Error::UnknownRegion(name.to_string()))?.clone();
         stack.push(name.to_string());
         let m = self.build_inner(&spec, stack)?;
         stack.pop();
@@ -395,14 +392,12 @@ fn walk(regions: &Registry, s: &Spec, stack: &mut Vec<String>) -> Result<(), Err
         if let Some(sel) = conflict(s) {
             return Err(Error::RefWithSelector { name: s.r#ref.clone(), selector: sel });
         }
-        if stack.iter().any(|n| *n == s.r#ref) {
+        if stack.contains(&s.r#ref) {
             let mut path = stack.clone();
             path.push(s.r#ref.clone());
             return Err(Error::Cycle(path));
         }
-        let sub = regions
-            .get(&s.r#ref)
-            .ok_or_else(|| Error::UnknownRegion(s.r#ref.clone()))?;
+        let sub = regions.get(&s.r#ref).ok_or_else(|| Error::UnknownRegion(s.r#ref.clone()))?;
         stack.push(s.r#ref.clone());
         walk(regions, sub, stack)?;
         stack.pop();
@@ -595,11 +590,8 @@ fn box_pass(m: &Mask, r: i32, horizontal: bool) -> Mask {
         for x in 0..m.w {
             let (mut sum, mut n) = (0.0, 0.0);
             for d in -r..=r {
-                let (xx, yy) = if horizontal {
-                    (x as i32 + d, y as i32)
-                } else {
-                    (x as i32, y as i32 + d)
-                };
+                let (xx, yy) =
+                    if horizontal { (x as i32 + d, y as i32) } else { (x as i32, y as i32 + d) };
                 if xx < 0 || yy < 0 || xx as usize >= m.w || yy as usize >= m.h {
                     continue;
                 }
