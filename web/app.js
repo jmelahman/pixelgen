@@ -231,7 +231,7 @@ function tick() {
 function play() {
   if (!state.session?.frames) return;
   state.playing = true;
-  el('play').textContent = 'Pause';
+  el('play').classList.add('playing');
   clearInterval(state.timer);
   state.timer = setInterval(tick, 1000 / Math.max(1, state.session.fps));
 }
@@ -239,7 +239,7 @@ function play() {
 function stop() {
   state.playing = false;
   clearInterval(state.timer);
-  el('play').textContent = 'Play';
+  el('play').classList.remove('playing');
 }
 
 el('play').addEventListener('click', () => (state.playing ? stop() : play()));
