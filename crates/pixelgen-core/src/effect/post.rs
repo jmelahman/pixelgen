@@ -6,7 +6,7 @@
 
 use core::f32::consts::TAU;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_yaml::Value;
 
 use super::{decode, whole, Context, Effect, Error};
@@ -14,9 +14,9 @@ use crate::pixel::{lerp, smooth_step, Image};
 
 // ---------------------------------------------------------------- vignette
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
-struct VignetteCfg {
+pub(super) struct VignetteCfg {
     amount: f32,
     /// Where the darkening starts, as a fraction of the distance from the
     /// center to a corner.
@@ -61,9 +61,9 @@ impl Effect for Vignette {
 
 // ---------------------------------------------------------------- scanlines
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
-struct ScanlinesCfg {
+pub(super) struct ScanlinesCfg {
     amount: f32,
     /// One row in every `period` is darkened.
     period: usize,
@@ -107,9 +107,9 @@ impl Effect for Scanlines {
 
 // ---------------------------------------------------------------- breathe
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
-struct BreatheCfg {
+pub(super) struct BreatheCfg {
     amount: f32,
     speed: i32,
 }

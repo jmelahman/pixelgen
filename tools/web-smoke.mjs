@@ -211,12 +211,16 @@ const out = empty ? { boxes: [[0, 0, 0, 0], [0, 0, 0, 0]], grid: [0, 0] } : awai
   // end of it.
   set('set-fps', 1000);
   titleblock.clamped = s.fps;
+  // Undone from the box itself, which means going to the tab it is on - the
+  // Layers tab is the one open by default.
+  document.querySelector('.tabs [data-tab="scene"]').click();
   const box = document.getElementById('yaml');
   box.focus();
   document.execCommand('undo');
   box.blur();
   window.pixelgen.apply();
   titleblock.undone = s.fps;
+  document.querySelector('.tabs [data-tab="layers"]').click();
 
   // Playback, a scrub, and a mask overlay: the three things that touch the
   // canvas from different directions.
@@ -228,6 +232,26 @@ const out = empty ? { boxes: [[0, 0, 0, 0], [0, 0, 0, 0]], grid: [0, 0] } : awai
   document.querySelector('#layers li').click();
   document.getElementById('showmask').checked = true;
   document.getElementById('showmask').dispatchEvent(new Event('change'));
+
+  // The layer panel, which edits the scene without the YAML being touched:
+  // add a layer from the menu, change one of its parameters, then switch a
+  // layer off. Each is read back from the session, not the panel, so a
+  // panel that only looks edited fails.
+  const panel = { before: s.layers.length };
+  document.querySelector('#add summary').click();
+  [...document.querySelectorAll('#catalog button')]
+    .find((b) => b.firstChild.textContent === 'vignette').click();
+  panel.added = s.layers.length;
+  panel.yaml = document.getElementById('yaml').value;
+  const amount = document.getElementById('param-amount');
+  amount.value = '0.55';
+  amount.dispatchEvent(new Event('change'));
+  panel.param = document.getElementById('yaml').value;
+  document.querySelector('#layers li .eye').click();
+  panel.hidden = s.layers.length;
+  panel.rows = document.querySelectorAll('#layers li').length;
+  panel.layerError = document.getElementById('layer-error').hidden
+    ? null : document.getElementById('layer-error').textContent;
 
   // The mask editor. Real clicks on the overlay, so the coordinate mapping
   // from screen space back to the 0..1 the scene format uses is exercised
@@ -261,6 +285,7 @@ const out = empty ? { boxes: [[0, 0, 0, 0], [0, 0, 0, 0]], grid: [0, 0] } : awai
     fps: s.fps,
     colors: s.palette.length,
     layers: s.layers,
+    panel,
     counter: document.getElementById('counter').textContent,
     snippet: document.getElementById('snippet').value,
     error: document.getElementById('error').hidden ? null : document.getElementById('error').textContent,
@@ -317,6 +342,13 @@ if (!Number.isInteger(scale) || scale < 1) bad.push('plate is not a whole multip
 else if ((scale + 1) * out.grid[0] <= out.room[0] - 32 && (scale + 1) * out.grid[1] <= out.room[1] - 32) {
   bad.push(`plate sat at ${scale}x in a viewport with room for more: ` + JSON.stringify(out.room));
 }
+const p = out.panel;
+if (p.layerError) bad.push('layer panel error: ' + p.layerError);
+if (p.added !== p.before + 1) bad.push(`adding a layer went from ${p.before} to ${p.added} drawn`);
+if (!/type: vignette/.test(p.yaml)) bad.push('the added layer is not in the scene');
+if (!/amount: 0\.55/.test(p.param)) bad.push('the parameter edit is not in the scene');
+if (p.hidden !== p.added - 1) bad.push(`hiding a layer left ${p.hidden} of ${p.added} drawn`);
+if (p.rows !== p.added) bad.push(`a hidden layer should stay listed: ${p.rows} rows for ${p.added}`);
 if (out.counter !== `6/${out.frames}`) bad.push('scrub did not move the frame: ' + out.counter);
 if (!/^polygon:(\n\s+- \{ x: [\d.]+, y: [\d.]+ \}){3}$/.test(out.snippet)) {
   bad.push('mask editor emitted: ' + JSON.stringify(out.snippet));

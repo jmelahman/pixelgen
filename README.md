@@ -127,7 +127,10 @@ a reimplementation that drifts.
 
 The renderer compiles to wasm, and `web/` is a small editor built on it: open a
 photograph and it lands in the scene its own analysis suggests, with the loop
-playing beside the YAML and masks drawable over the frame.
+playing beside it. The **Layers** tab is where it is edited: add, remove,
+reorder and hide layers, set each one's parameters, and draw its mask over the
+frame. **Scene** is the same thing as raw YAML, for anything the panel does not
+cover; an edit in either shows up in the other.
 
 **Save** writes a PNG of the current frame, a GIF of the loop, or a recording
 of it. The GIF comes from the same encoder the CLI uses — frames are already
@@ -152,11 +155,12 @@ straight to the wasm module, and there is no server to send it to.
 
 The editor is worth using for one thing in particular. A `chroma` or `luma`
 selector is defined by what it catches in _this_ image, which cannot be read off
-the YAML — clicking a layer draws its resolved mask over the frame, so the
+the YAML — a layer's **Show** draws its resolved mask over the frame, so the
 silhouette it actually cuts is visible before anything is animated.
 
 `tools/web-smoke.mjs` drives the page in headless Chromium — loads an image,
-generates a scene, plays it, scrubs, overlays a mask, draws a polygon — and
+generates a scene, plays it, scrubs, overlays a mask, adds, edits and hides a
+layer from the panel, draws a polygon — and
 fails if the canvas comes out blank or anything reaches the console.
 
 Recording from the page re-encodes the frames with `MediaRecorder`, which is

@@ -17,6 +17,7 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 use serde_yaml::Value;
 
+use crate::effect;
 use crate::mask::{self, Registry, Spec};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -163,6 +164,10 @@ pub enum Error {
     Dither(f32),
     NoType(usize),
     Mask(mask::Error),
+    /// An edit named a layer index the scene does not have.
+    NoLayer(usize),
+    /// An edit set a parameter the layer's effect does not take.
+    Param(String),
 }
 
 impl fmt::Display for Error {
@@ -174,6 +179,8 @@ impl fmt::Display for Error {
             Error::Dither(v) => write!(f, "scene: dither must be within [0,1], got {v}"),
             Error::NoType(i) => write!(f, "scene: layer {i} has no type"),
             Error::Mask(e) => write!(f, "scene: {e}"),
+            Error::NoLayer(i) => write!(f, "scene: there is no layer {i}"),
+            Error::Param(m) => write!(f, "scene: {m}"),
         }
     }
 }
@@ -237,5 +244,99 @@ impl Scene {
     pub fn set_palette_hex(&mut self, contents: &str) {
         self.palette.hex = contents.split_whitespace().map(str::to_string).collect();
         self.palette.file.clear();
+    }
+
+    // ------------------------------------------------------------ layer edits
+    //
+    // What the editor's layer panel does to a scene. They are plain mutations
+    // that leave checking to the caller: the host validates and prepares the
+    // result, and keeps the old scene if that fails, so a half-made edit never
+    // replaces a working one.
+
+    fn layer_mut(&mut self, i: usize) -> Result<&mut Layer, Error> {
+        self.layers.get_mut(i).ok_or(Error::NoLayer(i))
+    }
+
+    /// Insert a layer of effect `kind` at `at`, or on top when `at` is `None`.
+    /// It starts with no parameters and no mask, which is the whole frame.
+    pub fn add_layer(&mut self, kind: &str, at: Option<usize>) -> Result<usize, Error> {
+        let at = at.unwrap_or(self.layers.len());
+        if at > self.layers.len() {
+            return Err(Error::NoLayer(at));
+        }
+        self.layers.insert(at, Layer { r#type: kind.into(), ..Default::default() });
+        Ok(at)
+    }
+
+    pub fn remove_layer(&mut self, i: usize) -> Result<Layer, Error> {
+        if i >= self.layers.len() {
+            return Err(Error::NoLayer(i));
+        }
+        Ok(self.layers.remove(i))
+    }
+
+    /// Move layer `from` so that it ends up at index `to`.
+    pub fn move_layer(&mut self, from: usize, to: usize) -> Result<(), Error> {
+        if from >= self.layers.len() {
+            return Err(Error::NoLayer(from));
+        }
+        if to >= self.layers.len() {
+            return Err(Error::NoLayer(to));
+        }
+        let l = self.layers.remove(from);
+        self.layers.insert(to, l);
+        Ok(())
+    }
+
+    pub fn set_layer_disable(&mut self, i: usize, disable: bool) -> Result<(), Error> {
+        self.layer_mut(i)?.disable = disable;
+        Ok(())
+    }
+
+    pub fn rename_layer(&mut self, i: usize, name: &str) -> Result<(), Error> {
+        self.layer_mut(i)?.name = name.trim().into();
+        Ok(())
+    }
+
+    /// Set one of a layer's effect parameters.
+    ///
+    /// `null`, or the effect's own default, removes the key instead: the scene
+    /// file should record what was changed, not restate every default, or it
+    /// stops being something a person can read.
+    pub fn set_layer_param(&mut self, i: usize, key: &str, value: Value) -> Result<(), Error> {
+        let l = self.layer_mut(i)?;
+        let defaults = effect::defaults(&l.r#type).map_err(|e| Error::Param(e.to_string()))?;
+        let default = defaults
+            .get(key)
+            .ok_or_else(|| Error::Param(format!("{} takes no parameter {key:?}", l.r#type)))?;
+        // A number input hands back `1` for a default of `1.0`; both mean the
+        // same parameter value, so they compare as numbers.
+        let same = match (default.as_f64(), value.as_f64()) {
+            (Some(a), Some(b)) => a == b,
+            _ => *default == value,
+        };
+        let unset = value.is_null() || same;
+        if !l.params.is_mapping() {
+            if unset {
+                return Ok(());
+            }
+            l.params = Value::Mapping(Default::default());
+        }
+        let m = l.params.as_mapping_mut().expect("params was just made a mapping");
+        if unset {
+            m.remove(key);
+        } else {
+            m.insert(key.into(), value);
+        }
+        if m.is_empty() {
+            l.params = Value::Null;
+        }
+        Ok(())
+    }
+
+    /// Replace a layer's mask; `None` is the whole frame.
+    pub fn set_layer_mask(&mut self, i: usize, mask: Option<Spec>) -> Result<(), Error> {
+        self.layer_mut(i)?.mask = mask;
+        Ok(())
     }
 }

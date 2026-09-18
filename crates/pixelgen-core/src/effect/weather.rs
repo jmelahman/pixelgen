@@ -1,6 +1,6 @@
 //! Rain, fog and steam.
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_yaml::Value;
 
 use super::{color, decode, whole, Context, Effect, Error};
@@ -9,9 +9,9 @@ use crate::pixel::{fract, smooth_step, Image, Rgb};
 
 // ---------------------------------------------------------------- rain
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
-struct RainCfg {
+pub(super) struct RainCfg {
     count: i32,
     /// Whole traversals of the frame per loop. A fractional count would leave
     /// every drop mid-fall at the loop point and produce a visible jump.
@@ -103,9 +103,9 @@ impl Effect for Rain {
 
 // ---------------------------------------------------------------- mist
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
-struct MistCfg {
+pub(super) struct MistCfg {
     scale: f32,
     /// The noise lattice wraps every `period` cells and the field is scrolled
     /// by `period * dir` cells over one loop, so the directions must be whole
@@ -194,9 +194,9 @@ impl Effect for Mist {
 
 // ---------------------------------------------------------------- steam
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
-struct SteamCfg {
+pub(super) struct SteamCfg {
     scale: f32,
     rise: i32,
     threshold: f32,

@@ -3,6 +3,7 @@
 use std::fmt;
 
 use serde::de::DeserializeOwned;
+use serde::Serialize;
 use serde_yaml::Value;
 
 use crate::mask::Mask;
@@ -130,6 +131,63 @@ pub fn build(name: &str, params: &Value) -> Result<Box<dyn Effect>, Error> {
         "twinkle" => light::twinkle(params),
         "vignette" => post::vignette(params),
         _ => Err(Error::UnknownType { name: name.into(), known: names() }),
+    }
+}
+
+/// Every parameter an effect accepts, at its default value, as the mapping a
+/// scene would write under `params:`.
+///
+/// The editor builds its controls from this, so it has to name exactly the
+/// keys [`build`] accepts - the two matches are kept in step by a test. An
+/// optional color is present as `null`: absent, with the effect's own tint.
+pub fn defaults(name: &str) -> Result<Value, Error> {
+    fn of<T: Serialize + Default>() -> Result<Value, Error> {
+        let mut v =
+            serde_yaml::to_value(T::default()).map_err(|e| Error::BadParams(e.to_string()))?;
+        if let Value::Mapping(m) = &mut v {
+            for (_, x) in m.iter_mut() {
+                *x = shortest(x.clone());
+            }
+        }
+        Ok(v)
+    }
+    match name {
+        "breathe" => of::<post::BreatheCfg>(),
+        "drift" => of::<motion::DriftCfg>(),
+        "flicker" => of::<light::FlickerCfg>(),
+        "glow" => of::<light::GlowCfg>(),
+        "mist" => of::<weather::MistCfg>(),
+        "palette_cycle" => of::<light::PaletteCycleCfg>(),
+        "rain" => of::<weather::RainCfg>(),
+        "scanlines" => of::<post::ScanlinesCfg>(),
+        "shimmer" => of::<motion::ShimmerCfg>(),
+        "steam" => of::<weather::SteamCfg>(),
+        "sway" => of::<motion::SwayCfg>(),
+        "twinkle" => of::<light::TwinkleCfg>(),
+        "vignette" => of::<post::VignetteCfg>(),
+        _ => Err(Error::UnknownType { name: name.into(), known: names() }),
+    }
+}
+
+/// Every parameter is an `f32`, and widening one to the `f64` YAML stores
+/// writes `0.3` as `0.30000001192092896`. Going through the `f32`'s own
+/// shortest decimal gives back the number that was written in the source.
+fn shortest(v: Value) -> Value {
+    match v.as_f64() {
+        Some(f) if !v.is_i64() && !v.is_u64() => {
+            Value::from((f as f32).to_string().parse::<f64>().unwrap_or(f))
+        }
+        _ => v,
+    }
+}
+
+/// The values a string parameter is limited to, for the few that are an enum
+/// rather than free text or a color. Empty for everything else.
+pub fn choices(name: &str, param: &str) -> &'static [&'static str] {
+    match (name, param) {
+        ("sway", "anchor") => &["top", "bottom"],
+        ("shimmer", "axis") => &["x", "y"],
+        _ => &[],
     }
 }
 

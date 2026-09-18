@@ -670,26 +670,26 @@ main {
 .titleblock dd:has(.menu) {
   overflow: visible;
 }
-.menu.down > summary {
+.titleblock .menu > summary {
   display: inline-block;
   border-bottom: 1px dashed transparent;
 }
-.menu.down:not([inert]) > summary:hover {
+.titleblock .menu:not([inert]) > summary:hover {
   border-bottom-color: var(--dim);
 }
-.menu.down[inert] > summary {
+.titleblock .menu[inert] > summary {
   opacity: 1;
 }
-.menu.down[open] > summary {
+.titleblock .menu[open] > summary {
   background: none;
   border-bottom: 1px solid var(--accent);
 }
-.menu.down > div {
+.titleblock .menu > div {
   top: calc(100% + 0.4rem);
   bottom: auto;
   min-width: 16rem;
 }
-.menu.down label {
+.titleblock .menu label {
   display: flex;
   align-items: center;
   gap: 0.6rem;
@@ -698,17 +698,17 @@ main {
   font: 400 0.8125rem/1.4 var(--mono);
   cursor: pointer;
 }
-.menu.down label:last-child {
+.titleblock .menu label:last-child {
   border-bottom: 0;
 }
-.menu.down label:hover {
+.titleblock .menu label:hover {
   background: var(--ink-2);
 }
-.menu.down label input {
+.titleblock .menu label input {
   accent-color: var(--accent);
   margin: 0;
 }
-.menu.down label:has(input:not(:checked)) {
+.titleblock .menu label:has(input:not(:checked)) {
   color: var(--dim);
 }
 
@@ -770,7 +770,8 @@ textarea::placeholder {
 
 /* A scene that fails to prepare is annotated, not alarmed about: the margin
    rule marks the passage and the text says what the renderer said. */
-#error {
+#error,
+.error {
   margin: 0;
   padding: 0.15rem 0 0.15rem 1.1rem;
   border-left: 2px solid var(--accent);
@@ -780,35 +781,139 @@ textarea::placeholder {
   overflow-wrap: anywhere;
 }
 
-/* ── layers and catalog ───────────────────────────────────────────────── */
+/* ── layers ───────────────────────────────────────────────────────────── */
 ul {
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
+.toolbar {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+.toolbar > button.ctl {
+  min-width: 2.1rem;
+  justify-content: center;
+}
+
+/* The add menu drops below its button, and is wide enough to say what each
+   effect is for - the name alone rarely does. */
+.toolbar .menu > div {
+  left: 0;
+  right: auto;
+  top: calc(100% + 0.4rem);
+  bottom: auto;
+  width: min(24rem, calc(100vw - 2.5rem));
+  max-height: 60vh;
+  overflow: auto;
+}
+.toolbar .menu > div button {
+  display: grid;
+  grid-template-columns: 7.5rem minmax(0, 1fr);
+  align-items: baseline;
+  gap: 0.75rem;
+  font: 600 0.8125rem/1.4 var(--mono);
+  letter-spacing: 0;
+  text-transform: none;
+}
+.toolbar .menu > div button small {
+  font: 400 0.8125rem/1.4 var(--sans);
+}
+
+/* The stack: a bordered well of rows, as a layer panel always is, so the
+   list reads as one object rather than as loose text. */
+#layers {
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  background: var(--panel);
+  flex: none;
+}
 #layers li {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 0.6rem;
-  padding: 0.5rem 0.6rem;
-  border-radius: 3px;
+  min-height: 2.5rem;
+  padding: 0.3rem 0.6rem 0.3rem 0.35rem;
+  border-bottom: 1px solid var(--rule-soft);
   font: 600 0.875rem/1.4 var(--mono);
   cursor: pointer;
+  user-select: none;
+}
+#layers li:last-child {
+  border-bottom: 0;
 }
 #layers li:hover {
   background: var(--ink-2);
 }
-#layers li[aria-pressed="true"] {
+#layers li[aria-selected="true"] {
   background: var(--accent-soft);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+#layers li.off .name,
+#layers li.off .type {
+  opacity: 0.45;
+}
+#layers li.dragging {
+  opacity: 0.4;
+}
+#layers li.over {
+  box-shadow: inset 0 2px 0 var(--accent);
 }
 #layers li.none {
   color: var(--dim);
   font: 400 0.875rem/1.5 var(--sans);
+  padding: 0.6rem 0.75rem;
   cursor: default;
 }
 #layers li.none:hover {
   background: transparent;
+}
+#layers .name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Visibility: an open eye when drawn, an empty slot when not, the way every
+   layer panel marks it. Drawn in CSS so it takes the text color. */
+.eye {
+  flex: none;
+  width: 1.75rem;
+  height: 1.75rem;
+  display: grid;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: none;
+  color: var(--dim);
+  cursor: pointer;
+}
+.eye::before {
+  content: "";
+  width: 0.9rem;
+  height: 0.55rem;
+  border: 1.5px solid currentColor;
+  border-radius: 75% 15%;
+  transform: rotate(45deg);
+  background: radial-gradient(circle, currentColor 0 30%, transparent 34%);
+}
+.eye[aria-pressed="true"] {
+  color: var(--chalk);
+}
+.eye[aria-pressed="false"]::before {
+  opacity: 0.35;
+  background: none;
+}
+.eye:hover {
+  border-color: var(--rule);
+}
+
+input.rename {
+  flex: 1;
+  min-width: 0;
 }
 
 /* The type is where the layer comes from, not what it is called: a hairline
@@ -822,25 +927,107 @@ ul {
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--dim);
+  white-space: nowrap;
 }
 
-#catalog li {
-  display: grid;
-  grid-template-columns: 8.5rem minmax(0, 1fr);
+/* ── properties ───────────────────────────────────────────────────────── */
+#props {
+  display: flex;
+  flex-direction: column;
   gap: 0.6rem;
-  padding: 0.35rem 0.6rem;
+}
+
+.mask-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding-bottom: 0.6rem;
   border-bottom: 1px solid var(--rule-soft);
 }
-#catalog li:last-child {
-  border-bottom: 0;
-}
-#catalog b {
-  font: 600 0.8125rem/1.6 var(--mono);
-  font-weight: 600;
-}
-#catalog span {
+.label,
+.param label {
+  font: 600 0.6875rem/1 var(--cond);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
   color: var(--dim);
-  font-size: 0.875rem;
+}
+#mask-summary {
+  flex: 1;
+  font: 400 0.8125rem/1.4 var(--mono);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#params {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 9rem) 1.75rem;
+  align-items: center;
+  gap: 0.35rem 0.6rem;
+}
+/* Each row is three cells of the one grid, so every control lines up. */
+.param {
+  display: contents;
+}
+.param.set label {
+  color: var(--chalk);
+}
+.param.set label::after {
+  content: " \2022";
+  color: var(--accent);
+}
+
+.param input:not([type="checkbox"]):not([type="color"]),
+.param select {
+  width: 100%;
+  padding: 0.35rem 0.5rem;
+  background: var(--panel);
+  color: var(--chalk);
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  font: 400 0.8125rem/1.3 var(--mono);
+}
+.param input:focus,
+.param select:focus {
+  border-color: var(--dim);
+}
+.param input[type="checkbox"] {
+  justify-self: start;
+  accent-color: var(--accent);
+  margin: 0;
+}
+.param input[type="color"] {
+  width: 100%;
+  height: 1.9rem;
+  padding: 0.1rem;
+  border: 1px solid var(--rule);
+  border-radius: 3px;
+  background: var(--panel);
+  cursor: pointer;
+}
+/* Unset: the effect picks its own tint, so the swatch is only a suggestion. */
+.param input[type="color"].auto {
+  opacity: 0.35;
+}
+.reset {
+  width: 1.75rem;
+  height: 1.75rem;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: none;
+  color: var(--dim);
+  cursor: pointer;
+  font: 400 0.9375rem/1 var(--mono);
+}
+.reset:hover {
+  color: var(--chalk);
+  border-color: var(--rule);
+}
+/* Holds its grid cell when there is nothing to reset. */
+.reset[hidden] {
+  display: block !important;
+  visibility: hidden;
 }
 
 .shapes {
@@ -849,48 +1036,36 @@ ul {
   align-items: center;
 }
 
-/* ── disclosure ───────────────────────────────────────────────────────── */
-.explain summary {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  cursor: pointer;
-  padding: 0.5rem 0.7rem;
-  border: 1px solid var(--rule);
-  border-radius: 3px;
-  background: var(--panel);
-  color: var(--dim);
-  font: 600 0.6875rem/1 var(--cond);
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  list-style: none;
+/* ── help ─────────────────────────────────────────────────────────────── */
+/* Explanations live behind the ? at the end of the tab row: they are for the
+   first visit, and after that they are in the way of the panel. */
+.tabs .help-toggle {
+  flex: none;
+  width: 2.75rem;
+  border-left: 1px solid var(--rule);
+  font: 600 0.875rem/1 var(--mono);
+  letter-spacing: 0;
 }
-.explain summary::-webkit-details-marker {
-  display: none;
-}
-.explain summary::before {
-  content: "+";
-  color: var(--accent);
-  font: 400 0.9375rem/1 var(--mono);
-}
-.explain[open] summary::before {
-  content: "\2212";
-}
-.explain summary:hover {
+.tabs .help-toggle[aria-expanded="true"] {
   color: var(--chalk);
-  border-color: var(--dim);
+  background: var(--accent-soft);
 }
-.explain > div {
-  margin-top: 1rem;
+.help {
   padding: 0.15rem 0 0.15rem 1.1rem;
   border-left: 2px solid var(--accent);
 }
-.explain p {
+.help p {
   margin: 0 0 0.7rem;
   font-size: 0.875rem;
 }
-.explain p:last-child {
+.help p:last-child {
   margin-bottom: 0;
+}
+kbd {
+  padding: 0 0.3rem;
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  font: 400 0.75rem/1.4 var(--mono);
 }
 
 /* ── narrow ───────────────────────────────────────────────────────────── */

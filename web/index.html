@@ -100,32 +100,82 @@
     </dl>
 
     <nav class="tabs">
-      <button data-tab="scene" aria-pressed="true">Scene</button>
-      <button data-tab="layers" aria-pressed="false">Layers</button>
+      <button data-tab="layers" aria-pressed="true">Layers</button>
       <button data-tab="draw" aria-pressed="false">Mask</button>
+      <button data-tab="scene" aria-pressed="false">Scene</button>
+      <button id="help" class="help-toggle" type="button" aria-expanded="false"
+              aria-label="Show help" title="Show help">?</button>
     </nav>
 
-    <div class="tab" data-tab="scene">
-      <textarea id="yaml" spellcheck="false" aria-label="Scene"
-                placeholder="Open an image to start from the scene it suggests."></textarea>
-      <pre id="error" hidden></pre>
-    </div>
+    <!-- The layer stack is the editor proper: every change here is made to the
+         parsed scene and written back into the Scene tab, which stays as the
+         raw view of the same thing. -->
+    <div class="tab" data-tab="layers">
+      <div class="help" hidden>
+        <p>
+          The stack reads top-down, the way it is composited: the top row is
+          drawn last. The eye switches a layer off without losing its settings;
+          drag a row, or use the arrows, to reorder.
+        </p>
+        <p>
+          <b>Show</b> draws a layer's resolved mask over the frame. A
+          <code>chroma</code> or <code>luma</code> selector is defined by what it
+          catches in this image, which is not something the YAML can show you.
+        </p>
+        <p>
+          Every edit rewrites the Scene tab. <kbd>Ctrl</kbd>+<kbd>Z</kbd> steps
+          back through them.
+        </p>
+      </div>
 
-    <div class="tab" data-tab="layers" hidden>
-      <h2>In this scene</h2>
-      <ul id="layers"></ul>
-      <p class="quiet">
-        Selecting a layer draws its resolved mask over the frame. A
-        <code>chroma</code> or <code>luma</code> selector is defined by what it
-        catches in this image, which is not something the YAML can show you.
-      </p>
+      <div class="toolbar">
+        <details class="menu down" id="add" inert>
+          <summary class="ctl" title="Add a layer">+ Add</summary>
+          <div id="catalog"></div>
+        </details>
+        <button id="remove" class="ctl" type="button" title="Remove the selected layer" disabled>&minus;</button>
+        <span class="spacer"></span>
+        <button id="up" class="ctl" type="button" title="Move up the stack" aria-label="Move up" disabled>&uarr;</button>
+        <button id="down" class="ctl" type="button" title="Move down the stack" aria-label="Move down" disabled>&darr;</button>
+      </div>
 
-      <h2>Effects</h2>
-      <ul id="catalog"></ul>
+      <ul id="layers" role="listbox" aria-label="Layers"></ul>
+      <pre id="layer-error" class="error" hidden></pre>
+
+      <section id="props" hidden>
+        <h2 id="props-title"></h2>
+        <div class="mask-row">
+          <span class="label">Mask</span>
+          <code id="mask-summary"></code>
+          <button id="mask-show" class="ctl" type="button" aria-pressed="false">Show</button>
+          <button id="mask-edit" class="ctl" type="button">Edit</button>
+          <button id="mask-clear" class="ctl" type="button">Clear</button>
+        </div>
+        <div id="params"></div>
+      </section>
     </div>
 
     <div class="tab" data-tab="draw" hidden>
-      <h2>Draw a selector</h2>
+      <div class="help" hidden>
+        <p>
+          Click around a region on the plate. <b>Apply</b> makes it the mask of
+          the layer selected in the Layers tab; <b>Copy</b> takes the selector
+          to paste into <code>regions:</code> instead. Coordinates are fractions
+          of the frame, so they survive a change of <code>width</code>.
+        </p>
+        <p>
+          An outline is a last resort. A selector keyed on the image itself cuts
+          the exact silhouette of whatever stands in front of the region &mdash;
+          a figure, a plant, the window frame &mdash; and keeps doing it when you
+          change the grid or swap the photograph.
+        </p>
+        <p>
+          That is what stops rain falling indoors: not a tighter rectangle, but
+          <code>chroma</code>, which reads cool daylight apart from a warm
+          interior.
+        </p>
+      </div>
+
       <div class="shapes">
         <button id="shape-polygon" class="ctl" aria-pressed="true">Polygon</button>
         <button id="shape-rect" class="ctl" aria-pressed="false">Rectangle</button>
@@ -134,32 +184,24 @@
         <button id="clear" class="ctl">Clear</button>
       </div>
 
-      <p class="quiet">
-        Click around a region on the plate, then paste the result into a
-        layer's <code>mask:</code> or into <code>regions:</code>. Coordinates
-        are fractions of the frame, so they survive a change of
-        <code>width</code>.
-      </p>
-
       <textarea id="snippet" spellcheck="false" readonly aria-label="Selector"></textarea>
-      <button id="copy" class="ctl">Copy</button>
+      <div class="shapes">
+        <button id="apply-mask" class="ctl" type="button" disabled>Apply</button>
+        <button id="copy" class="ctl">Copy</button>
+      </div>
+    </div>
 
-      <details class="explain">
-        <summary>When not to draw one</summary>
-        <div>
-          <p>
-            An outline is a last resort. A selector keyed on the image itself
-            cuts the exact silhouette of whatever stands in front of the
-            region &mdash; a figure, a plant, the window frame &mdash; and keeps
-            doing it when you change the grid or swap the photograph.
-          </p>
-          <p>
-            That is what stops rain falling indoors: not a tighter rectangle,
-            but <code>chroma</code>, which reads cool daylight apart from a warm
-            interior.
-          </p>
-        </div>
-      </details>
+    <div class="tab" data-tab="scene" hidden>
+      <div class="help" hidden>
+        <p>
+          The scene as YAML &mdash; the same file <code>pixelgen animate
+          --scene</code> reads. Editing it here re-prepares the preview; the
+          layer panel writes its changes back into it.
+        </p>
+      </div>
+      <textarea id="yaml" spellcheck="false" aria-label="Scene"
+                placeholder="Open an image to start from the scene it suggests."></textarea>
+      <pre id="error" hidden></pre>
     </div>
   </aside>
 </main>

@@ -2,7 +2,7 @@
 
 use core::f32::consts::TAU;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_yaml::Value;
 
 use super::{color, decode, whole, Context, Effect, Error};
@@ -12,9 +12,9 @@ use crate::pixel::{fract, lerp, luma, smooth_step, Image, Rgb};
 
 // ---------------------------------------------------------------- flicker
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
-struct FlickerCfg {
+pub(super) struct FlickerCfg {
     amount: f32,
     speed: i32,
     turbulence: f32,
@@ -88,9 +88,9 @@ impl Effect for Flicker {
 
 // ---------------------------------------------------------------- twinkle
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
-struct TwinkleCfg {
+pub(super) struct TwinkleCfg {
     amount: f32,
     speed: i32,
     threshold: f32,
@@ -147,9 +147,9 @@ impl Effect for Twinkle {
 
 // ---------------------------------------------------------------- glow
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
-struct GlowCfg {
+pub(super) struct GlowCfg {
     radius: f32,
     threshold: f32,
     intensity: f32,
@@ -254,9 +254,9 @@ fn box_pass(src: &[f32], w: usize, h: usize, r: i32, horizontal: bool) -> Vec<f3
 
 // ---------------------------------------------------------------- palette cycle
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
-struct PaletteCycleCfg {
+pub(super) struct PaletteCycleCfg {
     start: usize,
     count: usize,
     /// Counted in complete rotations of the range per loop, which is the only

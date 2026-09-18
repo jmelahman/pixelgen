@@ -11,7 +11,7 @@
 
 use core::f32::consts::TAU;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_yaml::Value;
 
 use super::{decode, whole, Context, Effect, Error};
@@ -19,7 +19,7 @@ use crate::noise;
 use crate::pixel::Image;
 
 /// Which end of the region stays put.
-#[derive(Clone, Copy, Deserialize, PartialEq)]
+#[derive(Clone, Copy, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 enum Anchor {
     Top,
@@ -28,7 +28,7 @@ enum Anchor {
 
 /// The axis pixels are displaced along. The wave itself travels along the
 /// other one.
-#[derive(Clone, Copy, Deserialize, PartialEq)]
+#[derive(Clone, Copy, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 enum Axis {
     X,
@@ -37,9 +37,9 @@ enum Axis {
 
 // ---------------------------------------------------------------- sway
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
-struct SwayCfg {
+pub(super) struct SwayCfg {
     amplitude: f32,
     speed: i32,
     wavelength: f32,
@@ -113,9 +113,9 @@ impl Effect for Sway {
 
 // ---------------------------------------------------------------- shimmer
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
-struct ShimmerCfg {
+pub(super) struct ShimmerCfg {
     amplitude: f32,
     wavelength: f32,
     speed: i32,
@@ -187,9 +187,9 @@ impl Effect for Shimmer {
 /// whole number of traversals returns it to its starting position, and any
 /// other unit would let the author request a scroll that cannot close. The
 /// sign gives the direction.
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
-struct DriftCfg {
+pub(super) struct DriftCfg {
     speed_x: i32,
     speed_y: i32,
     wrap: bool,

@@ -18,14 +18,22 @@ const state = {
   frame: 0,
   playing: false,
   timer: null,
-  /** Index into session.layers whose mask is drawn over the frame, or null. */
-  maskLayer: null,
+  /** Every layer in the scene, disabled ones too, as `Session.scene_layers`. */
+  layers: [],
+  /** Index into `layers` (the scene's own order) of the selected one, or null. */
+  selected: null,
+  /** The scene index of the row being dragged. */
+  drag: null,
+  tab: 'layers',
   shape: 'polygon',
+  /** What the outline being drawn catches, as coverage, or null. */
+  preview: null,
   points: [],
   name: 'image',
 };
 
 await init();
+state.effects = JSON.parse(effects());
 
 // ---------------------------------------------------------------- image input
 
@@ -96,7 +104,12 @@ function apply() {
     el('error').textContent = e.message ?? String(e);
     return false;
   }
+  return refresh();
+}
 
+// Everything that follows from a scene having been prepared, however it got
+// there: typed into the Scene tab or edited in the layer panel.
+function refresh() {
   const s = state.session;
   view.width = overlay.width = s.width;
   view.height = overlay.height = s.height;
@@ -109,10 +122,16 @@ function apply() {
   el('scrub').value = state.frame;
   for (const id of ['play', 'scrub']) el(id).disabled = false;
   el('save').inert = false;
+  el('add').inert = false;
+
+  state.layers = JSON.parse(s.scene_layers());
+  if (state.selected !== null && state.selected >= state.layers.length) {
+    state.selected = state.layers.length ? state.layers.length - 1 : null;
+  }
+  if (state.selected === null && state.layers.length) state.selected = state.layers.length - 1;
 
   swatches(s.palette);
-  layerList(s.layers, s.layer_types);
-  if (state.maskLayer !== null && state.maskLayer >= s.layers.length) state.maskLayer = null;
+  layerPanel();
 
   titleblock(s);
   // The timer was set for the rate the loop had when Play was pressed.
@@ -182,9 +201,27 @@ function edit(change) {
 // header control the one edit Ctrl+Z cannot see past - and take everything
 // typed before it along too.
 function write(text) {
+  if (text !== el('yaml').value) onBox((box) => replace(box, text));
+}
+
+// Runs `f` with the scene box able to take focus. It sits on the Scene tab,
+// and a box on a hidden tab cannot be focused - so it could not be edited
+// through execCommand, and an edit made from the Layers tab would wipe its
+// history. The tab is shown for the length of the call only; nothing is
+// painted in between, so it never appears.
+function onBox(f) {
   const box = el('yaml');
+  const tab = box.closest('[hidden]');
+  if (tab) tab.hidden = false;
+  try {
+    return f(box);
+  } finally {
+    if (tab) tab.hidden = true;
+  }
+}
+
+function replace(box, text) {
   const old = box.value;
-  if (text === old) return;
 
   // Only the span that differs is replaced, so the rest of the text, and the
   // reader's place in it, is left alone.
@@ -199,8 +236,8 @@ function write(text) {
   box.focus({ preventScroll: true });
   box.setSelectionRange(a, old.length - b);
   // execCommand is deprecated, but it is still the only edit a textarea's undo
-  // stack records. A box on a hidden tab cannot take focus, and gets a plain
-  // assignment - and loses its history - instead.
+  // stack records. Should it be refused anyway, a plain assignment - which
+  // loses the history - is better than losing the edit.
   const typed = document.activeElement === box
     && document.execCommand(mid ? 'insertText' : 'delete', false, mid);
   if (!typed) {
@@ -275,33 +312,338 @@ function swatches(hexes) {
   }));
 }
 
-function layerList(names, types = []) {
-  el('layers').replaceChildren(...names.map((name, i) => {
-    const li = document.createElement('li');
-    li.append(name);
-    if (types[i]) {
-      const chip = document.createElement('span');
-      chip.className = 'type';
-      chip.textContent = types[i];
-      li.append(chip);
-    }
-    li.setAttribute('aria-pressed', state.maskLayer === i);
-    li.title = 'Draw this layer’s resolved mask over the frame';
-    li.addEventListener('click', () => {
-      state.maskLayer = state.maskLayer === i ? null : i;
-      el('showmask').checked = state.maskLayer !== null;
-      layerList(names, types);
-      draw();
-    });
-    return li;
-  }));
-  if (!names.length) {
+// ---------------------------------------------------------------- layer panel
+
+// Every change the panel makes goes through the parsed scene in the core and
+// comes back as YAML for the Scene tab, so the text and the stack can never
+// disagree. An edit the core refuses - a mask that catches nothing, a value
+// the effect rejects - is reported and the working scene stays as it was.
+function layerEdit(op) {
+  if (!state.session) return false;
+  let yaml;
+  try {
+    yaml = state.session.edit(JSON.stringify(op));
+  } catch (e) {
+    el('layer-error').hidden = false;
+    el('layer-error').textContent = e.message ?? String(e);
+    layerPanel();
+    return false;
+  }
+  write(yaml);
+  clearTimeout(pending);
+  el('error').hidden = true;
+  el('layer-error').hidden = true;
+  refresh();
+  return true;
+}
+
+// One history for the whole page: the scene box's own. The panel, the title
+// block and typing all edit through it, so stepping back from any of them
+// takes back the last change whatever made it.
+function undo() {
+  const back = document.activeElement;
+  const undone = onBox((box) => {
+    box.focus({ preventScroll: true });
+    const ok = document.execCommand('undo');
+    if (back && back !== document.body) back.focus({ preventScroll: true });
+    else box.blur();
+    return ok;
+  });
+  if (!undone) return;
+  clearTimeout(pending);
+  el('layer-error').hidden = true;
+  apply();
+}
+
+document.addEventListener('keydown', (e) => {
+  if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.key.toLowerCase() !== 'z') return;
+  // Text fields keep their own undo; this one steps back through panel edits.
+  if (e.target.closest('input, textarea, select')) return;
+  e.preventDefault();
+  undo();
+});
+
+/** The selected layer's index into the drawn layers, or null. */
+function selectedDrawn() {
+  return state.selected === null ? null : state.layers[state.selected]?.drawn ?? null;
+}
+
+function select(i) {
+  state.selected = i;
+  layerPanel();
+  drawOverlay();
+}
+
+function layerPanel() {
+  const ls = state.layers;
+  const list = el('layers');
+  // Top of the stack first, the way every layer panel reads: the row at the
+  // top is composited last and so sits over everything below it.
+  const rows = [];
+  for (let i = ls.length - 1; i >= 0; i--) rows.push(layerRow(ls[i], i));
+  list.replaceChildren(...rows);
+  if (!ls.length) {
     const li = document.createElement('li');
     li.className = 'none';
-    li.textContent = 'No enabled layers - the loop will be a still image.';
-    el('layers').append(li);
+    li.textContent = state.session
+      ? 'No layers - the loop will be a still image. Add one above.'
+      : 'Open an image to start.';
+    list.append(li);
   }
+
+  const sel = state.selected;
+  el('remove').disabled = sel === null;
+  el('up').disabled = sel === null || sel >= ls.length - 1;
+  el('down').disabled = sel === null || sel <= 0;
+  properties();
+  maskTarget();
 }
+
+function layerRow(layer, i) {
+  const li = document.createElement('li');
+  li.dataset.i = i;
+  li.setAttribute('role', 'option');
+  li.setAttribute('aria-selected', state.selected === i);
+  li.classList.toggle('off', layer.disable);
+  li.draggable = true;
+
+  const eye = document.createElement('button');
+  eye.type = 'button';
+  eye.className = 'eye';
+  eye.setAttribute('aria-pressed', !layer.disable);
+  eye.setAttribute('aria-label', layer.disable ? `Show ${layer.label}` : `Hide ${layer.label}`);
+  eye.title = layer.disable ? 'Switched off - click to draw it' : 'Drawn - click to switch off';
+  eye.addEventListener('click', (e) => {
+    e.stopPropagation();
+    layerEdit({ op: 'disable', i, disable: !layer.disable });
+  });
+
+  const name = document.createElement('span');
+  name.className = 'name';
+  name.textContent = layer.label;
+  name.title = 'Double-click to rename';
+  name.addEventListener('dblclick', (e) => {
+    e.stopPropagation();
+    rename(name, layer, i);
+  });
+
+  const chip = document.createElement('span');
+  chip.className = 'type';
+  chip.textContent = layer.type;
+
+  li.append(eye, name, chip);
+  li.addEventListener('click', () => select(i));
+
+  li.addEventListener('dragstart', (e) => {
+    state.drag = i;
+    e.dataTransfer.effectAllowed = 'move';
+    // Firefox starts no drag without data.
+    e.dataTransfer.setData('text/plain', String(i));
+    li.classList.add('dragging');
+  });
+  li.addEventListener('dragend', () => {
+    state.drag = null;
+    li.classList.remove('dragging');
+    el('layers').querySelectorAll('.over').forEach((o) => o.classList.remove('over'));
+  });
+  li.addEventListener('dragover', (e) => {
+    if (state.drag === null) return;
+    // Handled here so the page-wide handler does not treat it as a file.
+    e.preventDefault();
+    e.stopPropagation();
+    li.classList.toggle('over', state.drag !== i);
+  });
+  li.addEventListener('dragleave', () => li.classList.remove('over'));
+  li.addEventListener('drop', (e) => {
+    if (state.drag === null) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const from = state.drag;
+    state.drag = null;
+    if (from !== i && layerEdit({ op: 'move', from, to: i })) select(i);
+  });
+  return li;
+}
+
+function rename(span, layer, i) {
+  const input = document.createElement('input');
+  input.className = 'rename';
+  input.value = layer.name;
+  input.placeholder = layer.label;
+  input.setAttribute('aria-label', 'Layer name');
+  let done = false;
+  const finish = (keep) => {
+    if (done) return;
+    done = true;
+    if (keep && input.value.trim() !== layer.name) layerEdit({ op: 'rename', i, name: input.value });
+    else layerPanel();
+  };
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') finish(true);
+    if (e.key === 'Escape') finish(false);
+  });
+  input.addEventListener('blur', () => finish(true));
+  input.addEventListener('click', (e) => e.stopPropagation());
+  span.replaceWith(input);
+  input.focus();
+  input.select();
+}
+
+el('remove').addEventListener('click', () => {
+  const i = state.selected;
+  if (i === null) return;
+  if (layerEdit({ op: 'remove', i })) select(state.layers.length ? Math.min(i, state.layers.length - 1) : null);
+});
+
+// Up the stack is later in the scene's list, which is drawn in order.
+for (const [id, d] of [['up', 1], ['down', -1]]) {
+  el(id).addEventListener('click', () => {
+    const i = state.selected;
+    if (i === null) return;
+    if (layerEdit({ op: 'move', from: i, to: i + d })) select(i + d);
+  });
+}
+
+// The add menu, one entry per effect. A new layer goes directly over the
+// selected one, which is where a panel's "new layer" always lands.
+el('catalog').replaceChildren(...state.effects.map(({ name, description }) => {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.append(name);
+  const small = document.createElement('small');
+  small.textContent = description;
+  b.append(small);
+  b.addEventListener('click', () => {
+    el('add').open = false;
+    const at = state.selected === null ? state.layers.length : state.selected + 1;
+    if (layerEdit({ op: 'add', type: name, at })) select(at);
+  });
+  return b;
+}));
+
+function properties() {
+  const layer = state.selected === null ? null : state.layers[state.selected];
+  el('props').hidden = !layer;
+  if (!layer) return;
+
+  el('props-title').replaceChildren(layer.label);
+  el('mask-summary').textContent = maskSummary(layer.mask);
+  el('mask-summary').title = layer.mask ?? 'No mask: the whole frame';
+  el('mask-clear').disabled = !layer.mask;
+  el('mask-show').disabled = layer.drawn === null;
+  el('mask-show').setAttribute('aria-pressed', el('showmask').checked && layer.drawn !== null);
+
+  const spec = state.effects.find((f) => f.name === layer.type);
+  const rows = (spec?.params ?? []).map((p) => paramRow(p, layer));
+  if (!spec) {
+    const p = document.createElement('p');
+    p.className = 'quiet';
+    p.textContent = `${layer.type} is not an effect this build knows.`;
+    rows.push(p);
+  }
+  el('params').replaceChildren(...rows);
+}
+
+function paramRow(p, layer) {
+  const i = state.selected;
+  const value = layer.params?.[p.key] ?? null;
+  const set = layer.set.includes(p.key);
+  const send = (v) => layerEdit({ op: 'param', i, key: p.key, value: v });
+
+  const row = document.createElement('div');
+  row.className = 'param';
+  row.classList.toggle('set', set);
+  const id = `param-${p.key}`;
+  const label = document.createElement('label');
+  label.htmlFor = id;
+  label.textContent = p.key.replace(/_/g, ' ');
+  row.append(label);
+
+  let input;
+  if (p.kind === 'bool') {
+    input = document.createElement('input');
+    input.type = 'checkbox';
+    input.checked = !!value;
+    input.addEventListener('change', () => send(input.checked));
+  } else if (p.kind === 'choice') {
+    input = document.createElement('select');
+    for (const c of p.choices) input.append(new Option(c, c, false, c === value));
+    input.addEventListener('change', () => send(input.value));
+  } else if (p.kind === 'color') {
+    input = document.createElement('input');
+    input.type = 'color';
+    input.value = /^#[0-9a-f]{6}$/i.test(value ?? '') ? value : '#808080';
+    input.classList.toggle('auto', value === null);
+    input.title = value ?? 'The effect’s own tint';
+    input.addEventListener('change', () => send(input.value));
+  } else if (p.kind === 'int' || p.kind === 'float') {
+    input = document.createElement('input');
+    input.type = 'number';
+    input.step = p.kind === 'int' ? '1' : '0.01';
+    input.value = value;
+    // On change rather than input: a spinner held down would otherwise
+    // re-prepare the scene on every step it passes through.
+    input.addEventListener('change', () => {
+      const v = input.valueAsNumber;
+      if (Number.isFinite(v)) send(p.kind === 'int' ? Math.round(v) : v);
+    });
+  } else {
+    input = document.createElement('input');
+    input.value = value ?? '';
+    input.addEventListener('change', () => send(input.value || null));
+  }
+  input.id = id;
+  row.append(input);
+
+  const reset = document.createElement('button');
+  reset.type = 'button';
+  reset.className = 'reset';
+  reset.textContent = '↺';
+  reset.title = p.kind === 'color' ? 'Back to the effect’s own tint' : `Back to the default (${p.default})`;
+  reset.setAttribute('aria-label', `Reset ${p.key}`);
+  reset.hidden = !set;
+  reset.addEventListener('click', () => send(null));
+  row.append(reset);
+  return row;
+}
+
+// A mask as one line: what kind of selector it is, not its numbers. The full
+// YAML is in the title and in the Scene tab.
+function maskSummary(yaml) {
+  if (!yaml) return 'full frame';
+  const lines = yaml.split('\n');
+  const top = lines.filter((l) => /^[a-z_]+:/.test(l));
+  const kind = (l) => {
+    const [k, v] = l.split(/:\s*/);
+    if (k === 'ref') return `ref: ${v}`;
+    if (k === 'invert') return 'inverted';
+    if (k === 'feather' || k === 'gain') return `${k} ${v}`;
+    if (k === 'polygon') return `polygon · ${lines.filter((x) => x.startsWith('- x:')).length} pts`;
+    // A combinator names its members, which sit one level in as `- key:`.
+    if (k === 'all' || k === 'any') {
+      const members = lines.filter((x) => /^- [a-z_]+:/.test(x)).map((x) => kind(x.slice(2)));
+      return `${k}(${members.join(', ')})`;
+    }
+    return k;
+  };
+  return top.map(kind).join(' · ');
+}
+
+el('mask-show').addEventListener('click', () => {
+  el('showmask').checked = !el('showmask').checked;
+  properties();
+  drawOverlay();
+});
+
+el('mask-edit').addEventListener('click', () => {
+  state.points = [];
+  emit();
+  showTab('draw');
+});
+
+el('mask-clear').addEventListener('click', () => {
+  if (state.selected !== null) layerEdit({ op: 'mask', i: state.selected, mask: null });
+});
 
 // ---------------------------------------------------------------- playback
 
@@ -322,8 +664,18 @@ function draw() {
 
 function drawOverlay() {
   octx.clearRect(0, 0, overlay.width, overlay.height);
-  if (state.maskLayer !== null && el('showmask').checked) {
-    paintCoverage(state.session.layer_mask(state.maskLayer), 0.55);
+  if (!state.session?.frames) return;
+  // While drawing, what the outline catches is the thing being looked at -
+  // never a selected layer's own mask, even before the outline has enough
+  // points to preview.
+  if (state.tab === 'draw') {
+    if (state.preview) paintCoverage(state.preview);
+    else drawShape();
+    return;
+  }
+  const d = selectedDrawn();
+  if (d !== null && el('showmask').checked) {
+    paintCoverage(state.session.layer_mask(d), 0.55);
     return;
   }
   drawShape();
@@ -364,24 +716,43 @@ el('scrub').addEventListener('input', (e) => {
   state.frame = +e.target.value;
   draw();
 });
-el('showmask').addEventListener('change', (e) => {
-  if (e.target.checked && state.maskLayer === null && state.session?.layers.length) {
-    state.maskLayer = 0;
-    layerList(state.session.layers, state.session.layer_types);
-  }
+el('showmask').addEventListener('change', () => {
+  properties();
   drawOverlay();
 });
 
-// ---------------------------------------------------------------- mask drawing
+// ---------------------------------------------------------------- tabs and help
 
-const tabs = document.querySelectorAll('.tabs button');
-tabs.forEach((b) => b.addEventListener('click', () => {
-  tabs.forEach((o) => o.setAttribute('aria-pressed', o === b));
+const tabs = document.querySelectorAll('.tabs button[data-tab]');
+function showTab(name) {
+  state.tab = name;
+  tabs.forEach((o) => o.setAttribute('aria-pressed', o.dataset.tab === name));
   document.querySelectorAll('.tab').forEach((t) => {
-    t.hidden = t.dataset.tab !== b.dataset.tab;
+    t.hidden = t.dataset.tab !== name;
   });
-  el('viewport').classList.toggle('drawing', b.dataset.tab === 'draw');
-}));
+  el('viewport').classList.toggle('drawing', name === 'draw');
+  maskTarget();
+  drawOverlay();
+}
+tabs.forEach((b) => b.addEventListener('click', () => showTab(b.dataset.tab)));
+
+// The explanations are for the first visit; after that they are in the way.
+// Remembered per browser, which is all a preference like this needs.
+function help(open) {
+  el('help').setAttribute('aria-expanded', open);
+  el('help').setAttribute('aria-label', open ? 'Hide help' : 'Show help');
+  el('help').title = open ? 'Hide help' : 'Show help';
+  document.querySelectorAll('.help').forEach((h) => (h.hidden = !open));
+  try {
+    localStorage.setItem('pixelgen.help', open ? '1' : '0');
+  } catch { /* storage may be unavailable; the toggle still works */ }
+}
+el('help').addEventListener('click', () => help(el('help').getAttribute('aria-expanded') !== 'true'));
+try {
+  if (localStorage.getItem('pixelgen.help') === '1') help(true);
+} catch { /* as above */ }
+
+// ---------------------------------------------------------------- mask drawing
 
 for (const shape of ['polygon', 'rect', 'ellipse']) {
   el(`shape-${shape}`).addEventListener('click', () => {
@@ -409,6 +780,26 @@ overlay.addEventListener('click', (e) => {
   state.points.push(p);
   emit();
   drawOverlay();
+});
+
+// The draw tab's Apply button: which layer it would write to, if any.
+function maskTarget() {
+  const layer = state.selected === null ? null : state.layers[state.selected];
+  const b = el('apply-mask');
+  b.disabled = !layer || !el('snippet').value;
+  b.textContent = layer ? `Apply to ${layer.label}` : 'Apply';
+  b.title = layer ? `Make this the mask of ${layer.label}` : 'Select a layer to apply a mask to';
+}
+
+el('apply-mask').addEventListener('click', () => {
+  const i = state.selected;
+  if (i === null || !el('snippet').value) return;
+  if (layerEdit({ op: 'mask', i, mask: el('snippet').value })) {
+    state.points = [];
+    emit();
+    el('showmask').checked = true;
+    showTab('layers');
+  }
 });
 
 function drawShape() {
@@ -454,13 +845,13 @@ function emit() {
   // Showing what the selector actually catches is the point of drawing it in
   // the first place; feather and gain change the answer, so the core is asked
   // rather than the outline being trusted.
+  state.preview = null;
   if (text && state.session) {
     try {
-      const cov = state.session.preview_mask(text);
-      state.maskLayer = null;
-      paintCoverage(cov);
+      state.preview = state.session.preview_mask(text);
     } catch { /* an unfinished outline is not an error worth reporting */ }
   }
+  maskTarget();
 }
 
 function paintCoverage(cov, alpha = 0.45) {
@@ -561,7 +952,7 @@ el('save-video').addEventListener('click', () => saving('Recording…', async ()
 // A menu left open after the pointer has gone elsewhere is just a panel in
 // the way.
 document.addEventListener('click', (e) => {
-  for (const id of ['save', 'layer-menu']) if (!el(id).contains(e.target)) el(id).open = false;
+  for (const id of ['save', 'layer-menu', 'add']) if (!el(id).contains(e.target)) el(id).open = false;
 });
 
 function download(blob, name) {
@@ -573,13 +964,6 @@ function download(blob, name) {
 }
 
 // ---------------------------------------------------------------- odds and ends
-
-el('catalog').replaceChildren(...JSON.parse(effects()).map(({ name, description }) => {
-  const li = document.createElement('li');
-  li.innerHTML = `<b><code>${name}</code></b> <span></span>`;
-  li.querySelector('span').textContent = description;
-  return li;
-}));
 
 function say(msg, bad = false) {
   el('status').textContent = msg;
@@ -600,4 +984,4 @@ function stem(name) {
 
 // Exposed so the page can be driven from the console, and by the headless
 // smoke test in tools/, which has no way to work a file picker.
-window.pixelgen = { state, open, apply };
+window.pixelgen = { state, open, apply, edit: layerEdit, undo };

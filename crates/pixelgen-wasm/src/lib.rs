@@ -12,6 +12,8 @@ use pixelgen_core::pixel::Image;
 use pixelgen_core::render::{self, Prepared};
 use pixelgen_core::scene::Scene;
 use pixelgen_core::{effect, resample, starter};
+use serde::Deserialize;
+use serde_json::json;
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen(start)]
@@ -19,30 +21,79 @@ fn start() {
     console_error_panic_hook::set_once();
 }
 
-/// Every effect type and its one-line description, as JSON, for populating the
-/// editor's palette of layers.
+/// Every effect type as JSON, for the editor's add-layer menu and for building
+/// a selected layer's controls: its one-line description and each parameter's
+/// default and kind.
+///
+/// The kind is decided here because JSON cannot carry it: `1.0` and `1` arrive
+/// in JavaScript as the same number, but one is a float the editor should step
+/// in hundredths and the other a whole count of loop steps.
 #[wasm_bindgen]
-pub fn effects() -> String {
-    let body: Vec<String> = effect::CATALOG
-        .iter()
-        .map(|(n, d)| format!("{{\"name\":{},\"description\":{}}}", quote(n), quote(d)))
-        .collect();
-    format!("[{}]", body.join(","))
+pub fn effects() -> Result<String, JsError> {
+    let mut out = Vec::new();
+    for (name, description) in effect::CATALOG {
+        let defaults = effect::defaults(name).map_err(err)?;
+        let params: Vec<_> = defaults
+            .as_mapping()
+            .into_iter()
+            .flatten()
+            .filter_map(|(k, v)| {
+                let key = k.as_str()?;
+                let choices = effect::choices(name, key);
+                let kind = match v {
+                    _ if !choices.is_empty() => "choice",
+                    serde_yaml::Value::Bool(_) => "bool",
+                    serde_yaml::Value::Number(n) if n.is_f64() => "float",
+                    serde_yaml::Value::Number(_) => "int",
+                    // Every optional string parameter is a tint, absent until
+                    // set so the effect can use its own.
+                    serde_yaml::Value::Null => "color",
+                    _ => "text",
+                };
+                Some(json!({ "key": key, "default": v, "kind": kind, "choices": choices }))
+            })
+            .collect();
+        out.push(json!({ "name": name, "description": description, "params": params }));
+    }
+    Ok(serde_json::to_string(&out)?)
 }
 
-fn quote(s: &str) -> String {
-    let mut out = String::with_capacity(s.len() + 2);
-    out.push('"');
-    for c in s.chars() {
-        match c {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
-            c => out.push(c),
-        }
-    }
-    out.push('"');
-    out
+/// One edit from the layer panel. `i` is always an index into the scene's
+/// own `layers:` list, disabled layers included.
+#[derive(Deserialize)]
+#[serde(tag = "op", rename_all = "lowercase", deny_unknown_fields)]
+enum Edit {
+    Add {
+        #[serde(rename = "type")]
+        kind: String,
+        at: Option<usize>,
+    },
+    Remove {
+        i: usize,
+    },
+    Move {
+        from: usize,
+        to: usize,
+    },
+    Disable {
+        i: usize,
+        disable: bool,
+    },
+    Rename {
+        i: usize,
+        name: String,
+    },
+    Param {
+        i: usize,
+        key: String,
+        value: serde_yaml::Value,
+    },
+    /// `mask` is a YAML mask block, as it would appear under `mask:`, or
+    /// `null` for the whole frame.
+    Mask {
+        i: usize,
+        mask: Option<String>,
+    },
 }
 
 /// One source photograph, plus whatever has been prepared from it.
@@ -100,9 +151,78 @@ impl Session {
                  palette.hex instead"
             )));
         }
-        self.prep = Some(render::prepare(&self.src, &scene).map_err(err)?);
-        self.scene = scene;
-        Ok(())
+        self.commit(scene)
+    }
+
+    /// Apply one layer-panel edit (a JSON [`Edit`]) and return the scene as
+    /// YAML, for the editor to put back in its text box.
+    ///
+    /// The edit is made to a copy and only kept if the result prepares. A
+    /// layer whose mask catches nothing, or a parameter its effect rejects,
+    /// reports why and leaves the working scene on screen.
+    pub fn edit(&mut self, op: &str) -> Result<String, JsError> {
+        let op: Edit = serde_json::from_str(op)?;
+        let mut s = self.scene.clone();
+        match op {
+            Edit::Add { kind, at } => s.add_layer(&kind, at).map(drop),
+            Edit::Remove { i } => s.remove_layer(i).map(drop),
+            Edit::Move { from, to } => s.move_layer(from, to),
+            Edit::Disable { i, disable } => s.set_layer_disable(i, disable),
+            Edit::Rename { i, name } => s.rename_layer(i, &name),
+            Edit::Param { i, key, value } => s.set_layer_param(i, &key, value),
+            Edit::Mask { i, mask } => {
+                let spec = match mask {
+                    Some(m) => Some(
+                        serde_yaml::from_str::<Spec>(&m)
+                            .map_err(|e| JsError::new(&format!("parsing mask: {e}")))?,
+                    ),
+                    None => None,
+                };
+                s.set_layer_mask(i, spec)
+            }
+        }
+        .map_err(err)?;
+        s.validate().map_err(err)?;
+        self.commit(s)?;
+        self.normalized()
+    }
+
+    /// Every layer in the scene as JSON, disabled ones included, for the layer
+    /// panel: its parameters with defaults filled in, which of them the scene
+    /// actually sets, its mask as YAML, and `drawn` - its index into
+    /// [`Session::layers`] and [`Session::layer_mask`], or `null` when it is
+    /// switched off.
+    pub fn scene_layers(&self) -> Result<String, JsError> {
+        let mut drawn = 0;
+        let mut out = Vec::new();
+        for (i, l) in self.scene.layers.iter().enumerate() {
+            let mut params = effect::defaults(&l.r#type).unwrap_or(serde_yaml::Value::Null);
+            let mut set = Vec::new();
+            if let (Some(p), Some(given)) = (params.as_mapping_mut(), l.params.as_mapping()) {
+                for (k, v) in given {
+                    p.insert(k.clone(), v.clone());
+                    set.extend(k.as_str().map(String::from));
+                }
+            }
+            let mask = match &l.mask {
+                Some(m) => Some(serde_yaml::to_string(m).map_err(err)?),
+                None => None,
+            };
+            out.push(json!({
+                "name": l.name,
+                "label": l.label(i),
+                "type": l.r#type,
+                "disable": l.disable,
+                "params": params,
+                "set": set,
+                "mask": mask,
+                "drawn": (!l.disable).then_some(drawn),
+            }));
+            if !l.disable {
+                drawn += 1;
+            }
+        }
+        Ok(serde_json::to_string(&out)?)
     }
 
     /// Grid width in cells. Zero until a scene is set.
@@ -157,27 +277,6 @@ impl Session {
     #[wasm_bindgen(getter)]
     pub fn colors(&self) -> usize {
         self.scene.palette.colors
-    }
-
-    /// Every layer in the scene, disabled ones included, as JSON
-    /// `[{"name","type","disable"}]` in file order - the order the editor
-    /// needs to find each one in the YAML text again.
-    pub fn scene_layers(&self) -> String {
-        let body: Vec<String> = self
-            .scene
-            .layers
-            .iter()
-            .enumerate()
-            .map(|(i, l)| {
-                format!(
-                    "{{\"name\":{},\"type\":{},\"disable\":{}}}",
-                    quote(&l.label(i)),
-                    quote(&l.r#type),
-                    l.disable
-                )
-            })
-            .collect();
-        format!("[{}]", body.join(","))
     }
 
     /// Whether the palette is derived from the image, and so whether
@@ -258,6 +357,14 @@ impl Session {
     /// uses this to show what a shorthand actually expanded to.
     pub fn normalized(&self) -> Result<String, JsError> {
         self.scene.to_yaml().map_err(err)
+    }
+
+    /// Prepare `scene` and make it the current one. Nothing changes if it
+    /// fails, so the last working scene stays on screen.
+    fn commit(&mut self, scene: Scene) -> Result<(), JsError> {
+        self.prep = Some(render::prepare(&self.src, &scene).map_err(err)?);
+        self.scene = scene;
+        Ok(())
     }
 
     fn prepared(&self) -> Result<&Prepared, JsError> {
