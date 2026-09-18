@@ -18,10 +18,9 @@ repos:
     hooks:
       - id: cargo-fmt
         name: cargo fmt
-        entry: cargo fmt --all -- --check
+        entry: cargo fmt --
         language: rust
         types: [rust]
-        pass_filenames: false
 
       - id: cargo-clippy
         name: cargo clippy

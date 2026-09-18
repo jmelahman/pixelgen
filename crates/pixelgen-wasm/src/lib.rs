@@ -376,8 +376,7 @@ impl Session {
     pub fn gif(&self, scale: usize) -> Result<Vec<u8>, JsError> {
         let p = self.prepared()?;
         let frames: Vec<_> = (0..p.frames).map(|i| p.frame(i)).collect();
-        encode::gif(&frames, &p.matcher.palette, scale, self.fps())
-            .map_err(|e| JsError::new(&e))
+        encode::gif(&frames, &p.matcher.palette, scale, self.fps()).map_err(|e| JsError::new(&e))
     }
 
     /// A drawn layer's resolved mask as 8-bit coverage, one byte per cell.
