@@ -944,6 +944,9 @@ el('save-video').addEventListener('click', () => saving('Recording…', async ()
   const fps = Math.max(1, state.session.fps);
   const stream = c.captureStream(0);
   const track = stream.getVideoTracks()[0];
+  // The standard puts requestFrame on the track; Firefox only has it on the
+  // stream.
+  const requestFrame = track.requestFrame ? () => track.requestFrame() : () => stream.requestFrame();
   const chunks = [];
   const rec = new MediaRecorder(stream, { mimeType: VIDEO, videoBitsPerSecond: 12e6 });
   rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
@@ -955,7 +958,7 @@ el('save-video').addEventListener('click', () => saving('Recording…', async ()
     cx.putImageData(new ImageData(new Uint8ClampedArray(rgba), c.width, c.height), 0, 0);
     // Pushing frames explicitly rather than letting the stream sample the
     // canvas is what keeps the recording frame-exact, and so still a loop.
-    track.requestFrame();
+    requestFrame();
     await new Promise((r) => setTimeout(r, 1000 / fps));
   }
 
