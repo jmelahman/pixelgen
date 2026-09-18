@@ -8,22 +8,20 @@ Run the full hook suite before calling any change done:
 prek run --all-files
 ```
 
-All of it has to pass, including `build the wasm bundle` and
-`smoke-test the page`: those two are the only checks that the page in `web/`
-actually builds and starts, and they are what the deploy relies on.
+## Running the page
 
-prek provides most of what the hooks need: a Rust toolchain with the
-`wasm32-unknown-unknown` target, `wasm-bindgen-cli`, Node 22+, and, when no
-Chrome is installed, a `chrome-headless-shell` download cached under
-`~/.cache/pixelgen/browsers`. The machine still has to have:
+```sh
+prek run build-web --all-files
+python3 -m http.server -d web 8000 --bind 127.0.0.1   # run in background
+```
 
-- **A C linker** (`cc`). Without it every Rust hook fails with
-  "linker `cc` not found".
-- **`rustfmt` and `clippy`** for the cargo in use. prek's own toolchain is the
-  minimal profile, so without them the cargo hooks fail with
-  "no such command: `fmt`" / "`clippy`" (or set `PREK_RUST_PROFILE=default`).
-- **The shared libraries Chrome links against.** A desktop has them; a bare
-  container may not (`ldd` the downloaded binary to see which are missing).
+Rebuild after touching `crates/`; `web/` edits only need a reload.
 
-`CHROME=/path/to/chrome` picks the browser explicitly; otherwise the smoke test
-uses a `chromium` / `google-chrome` on `PATH` if there is one.
+## Inspecting with the Playwright MCP
+
+1. `browser_navigate` to `http://127.0.0.1:8000/`; wait for `window.pixelgen`.
+2. `browser_console_messages` at `error` - anything there is a bug.
+3. Open an image: "Open image" + `browser_file_upload`, or
+   `window.pixelgen.open(file)` via `browser_evaluate` (see
+   `tools/web-smoke.mjs` for a synthetic photo). A scene is built automatically.
+4. `browser_take_screenshot` to see the canvas; `browser_snapshot` for refs.
