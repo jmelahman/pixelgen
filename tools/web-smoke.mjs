@@ -302,8 +302,68 @@ const out = empty ? { boxes: [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]], grid: [
   document.getElementById('region-name').value = 'smoke';
   document.getElementById('region-name').dispatchEvent(new Event('input'));
   document.getElementById('region-form').requestSubmit();
-  sel.region = JSON.parse(s.regions()).includes('smoke')
-    && document.getElementById('yaml').value.includes('smoke:');
+  const region = (n) => JSON.parse(s.regions()).find((r) => r.name === n);
+  const row = (n) => [...document.querySelectorAll('#region-list li[data-name]')]
+    .find((li) => li.dataset.name === n);
+  const nameBox = document.getElementById('region-name');
+  const saveLabel = () => document.getElementById('save-region').textContent;
+  // Only the page's own guards here: a missing row or button is reported by
+  // the checks below rather than thrown.
+  const pick = (n) => [...document.querySelectorAll('#sel-regions button')]
+    .find((b) => b.firstChild.textContent === n)?.click();
+  sel.region = !!region('smoke') && document.getElementById('yaml').value.includes('smoke:');
+
+  // Editing it in place: its own definition comes back as the selection, and
+  // saving under the same name replaces it.
+  const saved = region('smoke')?.mask;
+  const count = JSON.parse(s.regions()).length;
+  // Saving made it the region being edited; start from nothing loaded.
+  key('d', { ctrlKey: true });
+  row('smoke')?.querySelector('.name')?.click();
+  const regions = {
+    loaded: !!st.sel && !st.sel.ref && st.region === 'smoke',
+    label: saveLabel(),
+  };
+  // Stepping back past the load leaves nothing set to be overwritten, and
+  // stepping forward again sets it back.
+  key('z', { ctrlKey: true });
+  regions.undoDisarms = st.region === null && nameBox.value === '' && saveLabel() === 'Save as region';
+  key('z', { ctrlKey: true, shiftKey: true });
+  regions.redoRearms = st.region === 'smoke' && saveLabel() === 'Update smoke';
+  drag([[0.05, 0.8], [0.15, 0.9]], { shiftKey: true });
+  document.getElementById('region-form').requestSubmit();
+  regions.updated = region('smoke')?.mask !== saved && JSON.parse(s.regions()).length === count;
+
+  // Renamed while a layer uses it: the layer's reference follows, and so do
+  // the selection and its history, which the rename must not replace.
+  pick('smoke');
+  regions.pickDisarms = st.region === null && nameBox.value === '';
+  document.getElementById('apply-mask').click();
+  drag([[0.4, 0.8], [0.5, 0.9]], { shiftKey: true });
+  const held = JSON.stringify(st.sel);
+  row('smoke')?.querySelector('.ren')?.click();
+  const rename = document.querySelector('#region-list input.rename');
+  if (rename) {
+    rename.value = 'haze';
+    rename.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  }
+  regions.renamed = !region('smoke') && /ref: haze/.test(layerMask() ?? '');
+  regions.selFollowed = JSON.stringify(st.sel) === held.replace('"smoke"', '"haze"');
+  key('z', { ctrlKey: true });
+  regions.undoFollowed = st.sel?.ref === 'haze' && covered() > 0;
+  regions.inUse = row('haze')?.querySelector('.del')?.disabled;
+
+  // One the selection uses cannot be deleted; once nothing uses it, it can.
+  nameBox.value = 'spare';
+  nameBox.dispatchEvent(new Event('input'));
+  document.getElementById('region-form').requestSubmit();
+  pick('spare');
+  regions.selBlocks = row('spare')?.querySelector('.del')?.disabled;
+  key('d', { ctrlKey: true });
+  regions.deselectDisarms = nameBox.value === '' && saveLabel() === 'Save as region';
+  row('spare')?.querySelector('.del')?.click();
+  regions.deleted = !!region('haze') && !region('spare');
+  sel.regions = regions;
 
   // The wand, on the flat cool upper half: nothing below the horizon.
   tool('wand');
@@ -425,12 +485,23 @@ const sel = out.sel;
 if (sel.ops.join() !== 'add,add,sub') bad.push('drag, Shift-drag, Alt-drag gave steps ' + JSON.stringify(sel.ops));
 if (!sel.ants) bad.push('a selection drew no marching ants');
 if (sel.undone.join() !== 'add,add') bad.push('Ctrl+Z left the selection at ' + JSON.stringify(sel.undone));
-if (!sel.sceneKept) bad.push('Ctrl+Z on the Mask tab undid a scene edit rather than a selection step');
+if (!sel.sceneKept) bad.push('Ctrl+Z on the Select tab undid a scene edit rather than a selection step');
 if (!/steps:/.test(sel.replaced ?? '')) bad.push('Apply did not set the layer mask: ' + JSON.stringify(sel.replaced));
 if (!sel.added || sel.added === sel.replaced || !/- add:\s+rect:\s+x: 0\.6/.test(sel.added)) {
   bad.push('Apply > Add did not add to the layer mask: ' + JSON.stringify(sel.added));
 }
 if (!sel.region) bad.push('Save as region did not write regions.smoke');
+const rg = sel.regions;
+if (!rg.loaded || rg.label !== 'Update smoke') bad.push('clicking a region did not load it for editing: ' + JSON.stringify(rg));
+if (!rg.updated) bad.push('Update did not replace the region in place: ' + JSON.stringify(rg));
+if (!rg.renamed) bad.push('renaming a region did not carry its references along: ' + JSON.stringify(rg));
+if (!rg.inUse) bad.push('a region in use could be deleted');
+if (!rg.selFollowed || !rg.undoFollowed) bad.push('the selection did not follow a region rename: ' + JSON.stringify(rg));
+if (!rg.selBlocks) bad.push('a region the selection uses could be deleted');
+for (const k of ['undoDisarms', 'redoRearms', 'pickDisarms', 'deselectDisarms']) {
+  if (!rg[k]) bad.push(`the save button still named a region it should not (${k}): ` + JSON.stringify(rg));
+}
+if (!rg.deleted) bad.push('deleting an unused region did not remove it: ' + JSON.stringify(rg));
 if (sel.wand.top < 0.9 || sel.wand.low) bad.push('the wand leaked across the horizon: ' + JSON.stringify(sel.wand));
 if (!/^M[^Z]*C[^Z]*Z$/.test(sel.pen ?? '')) bad.push('the pen wrote ' + JSON.stringify(sel.pen));
 if (!(sel.erase.after < sel.erase.before) || sel.erase.ops.join() !== 'add,sub') {

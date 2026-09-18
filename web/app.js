@@ -30,13 +30,24 @@ const state = {
   /** The scene index of the row being dragged. */
   drag: null,
   tab: 'layers',
-  /** The selection being made in the Mask tab, as a mask spec, or null. */
+  /** The selection being made in the Select tab, as a mask spec, or null. */
   sel: null,
   /** What `sel` catches, as 8-bit coverage over the grid. */
   selCov: null,
-  /** The selection's own history, as JSON. */
+  /**
+   * The selection's own history, as JSON of `{sel, region}`: which region it
+   * was loaded from travels with it, so stepping back past loading one does
+   * not leave the page set to overwrite that region.
+   */
   selUndo: [],
   selRedo: [],
+  /** The scene's regions, as `Session.regions`. */
+  regions: [],
+  /**
+   * The region whose definition was loaded as the selection, or null. The
+   * name box holds it while it is set; only `editing` changes it.
+   */
+  region: null,
   tool: 'rect',
   mode: 'new',
   /** The shape the current tool is in the middle of, or null. */
@@ -370,8 +381,14 @@ function layerEdit(op) {
   try {
     yaml = state.session.edit(JSON.stringify(op));
   } catch (e) {
-    el('layer-error').hidden = false;
-    el('layer-error').textContent = e.message ?? String(e);
+    // The panel's own error box is on the Layers tab; from anywhere else the
+    // refusal would go unseen there, and still be showing on the way back.
+    if (state.tab === 'layers') {
+      el('layer-error').hidden = false;
+      el('layer-error').textContent = e.message ?? String(e);
+    } else {
+      fail(e);
+    }
     layerPanel();
     return false;
   }
@@ -406,7 +423,7 @@ document.addEventListener('keydown', (e) => {
   // Text fields keep their own undo; this one steps back through panel edits.
   if (e.target.closest('input, textarea, select')) return;
   // While a selection is being made, its own steps come first: Apply is the
-  // only thing that reaches the scene from the Mask tab.
+  // only thing that reaches the scene from the Select tab.
   if (state.tab === 'draw' && selHistory(e.shiftKey)) {
     e.preventDefault();
     return;
@@ -701,7 +718,7 @@ el('mask-show').addEventListener('click', () => {
   drawOverlay();
 });
 
-// Takes the layer's mask into the Mask tab as the selection, to work on.
+// Takes the layer's mask into the Select tab as the selection, to work on.
 el('mask-edit').addEventListener('click', () => {
   loadLayerMask();
   showTab('draw');
@@ -838,8 +855,13 @@ const TOOLS = ['rect', 'ellipse', 'lasso', 'polygon', 'magnetic', 'wand', 'range
 const r4 = (v) => Math.round(v * 1e4) / 1e4;
 let antsOffset = 0;
 
+// A step of the selection's history: the selection, and the region it came from.
+function snapshot() {
+  return JSON.stringify({ sel: state.sel, region: state.region });
+}
+
 function setSel(sel) {
-  state.selUndo.push(JSON.stringify(state.sel));
+  state.selUndo.push(snapshot());
   state.selRedo = [];
   state.sel = sel;
   selChanged();
@@ -854,9 +876,11 @@ function selHistory(redo) {
   }
   const [from, to] = redo ? [state.selRedo, state.selUndo] : [state.selUndo, state.selRedo];
   if (!from.length) return false;
-  to.push(JSON.stringify(state.sel));
-  state.sel = JSON.parse(from.pop());
+  to.push(snapshot());
+  const { sel, region } = JSON.parse(from.pop());
+  state.sel = sel;
   selChanged();
+  if (region !== state.region) editing(state.regions.some((r) => r.name === region) ? region : null);
   return true;
 }
 
@@ -866,6 +890,11 @@ function resetSel() {
   state.selCov = null;
   state.selUndo = [];
   state.selRedo = [];
+  // The regions belong to the old scene: a same-named one in the new scene
+  // is not the one being edited, and a name gone from the list is not a
+  // rename.
+  state.regions = [];
+  editing(null);
 }
 
 // Everything that follows from the selection having changed, or from the grid
@@ -900,6 +929,7 @@ function selChanged() {
     input.nextElementSibling.value = input.value;
   }
   el('pen-reopen').disabled = !lastPen();
+  regionButtons();
   maskTarget();
   showSel();
 }
@@ -1409,6 +1439,7 @@ function selectAll() {
 function deselect() {
   cancelDraft();
   if (state.sel) setSel(null);
+  editing(null);
 }
 
 function invert() {
@@ -1433,24 +1464,223 @@ function loadLayerMask() {
   } catch (e) {
     fail(e);
   }
+  editing(null);
 }
 
-// The Select menu's list of regions, one entry per name in the scene.
+// The scene's regions, in the Select menu - where picking one adds a
+// reference to it - and in the list under the tab, where picking one loads
+// its definition to be worked on and saved back.
 function regionMenu() {
-  let names = [];
+  const before = state.regions;
   try {
-    names = state.session ? JSON.parse(state.session.regions()) : [];
-  } catch { /* no scene yet */ }
-  el('sel-regions').replaceChildren(...names.map((name) => {
+    state.regions = state.session ? JSON.parse(state.session.regions()) : [];
+  } catch {
+    state.regions = []; // no scene yet
+  }
+  const renames = renaming ? [renaming] : guessRenames(before, state.regions);
+  for (const [from, to] of renames) followRename(from, to);
+  // The region being edited may have gone with an undo.
+  if (state.region !== null && !state.regions.some((r) => r.name === state.region)) editing(null);
+
+  el('sel-regions').replaceChildren(...state.regions.map(({ name }) => {
     const b = document.createElement('button');
     b.type = 'button';
     b.textContent = name;
     const small = document.createElement('small');
     small.textContent = 'region';
     b.append(' ', small);
-    b.addEventListener('click', () => setSel({ ref: name }));
+    b.addEventListener('click', () => {
+      setSel({ ref: name });
+      editing(null);
+    });
     return b;
   }));
+  // Rebuilt only when there is something new to show: a rebuild takes any
+  // rename being typed along with it.
+  const shown = JSON.stringify(state.regions);
+  if (shown !== regionsShown) regionList();
+  regionsShown = shown;
+}
+let regionsShown = null;
+
+function regionList() {
+  const list = el('region-list');
+  el('nregions').textContent = state.regions.length || '';
+  list.replaceChildren(...state.regions.map(regionRow));
+  if (!state.regions.length) {
+    const li = document.createElement('li');
+    li.className = 'none';
+    li.textContent = 'None yet. Name a selection above to save one.';
+    list.append(li);
+  }
+  regionButtons();
+}
+
+// What depends on the selection rather than on the regions: the selection
+// counts as a user too, since deleting a region it refers to would leave it
+// selecting nothing.
+function regionButtons() {
+  for (const li of el('region-list').querySelectorAll('li[data-name]')) {
+    const r = state.regions.find((x) => x.name === li.dataset.name);
+    if (!r) continue;
+    const users = refersTo(state.sel, r.name) ? [...r.users, 'the selection'] : r.users;
+    const del = li.querySelector('.del');
+    del.disabled = users.length > 0;
+    del.title = users.length ? `Still used by ${users.join(', ')}` : 'Delete the region';
+    li.classList.toggle('current', r.name === state.region);
+  }
+}
+
+function regionRow(r) {
+  const li = document.createElement('li');
+  li.dataset.name = r.name;
+
+  // A button, so a region can be loaded from the keyboard; the rest of the
+  // row does the same for the pointer.
+  const name = document.createElement('button');
+  name.type = 'button';
+  name.className = 'name';
+  name.textContent = r.name;
+  name.title = 'Load as the selection';
+
+  const used = document.createElement('span');
+  used.className = 'type';
+  used.textContent = r.users.length ? `used \u00d7${r.users.length}` : 'unused';
+  used.title = r.users.length ? `Used by ${r.users.join(', ')}` : 'Nothing refers to it yet';
+
+  // Its own button rather than a double-click on the name: a click on the
+  // row loads the region, so the first half of a double-click would already
+  // have replaced the selection.
+  const ren = document.createElement('button');
+  ren.type = 'button';
+  ren.className = 'ctl ren';
+  ren.textContent = 'Rename';
+  ren.setAttribute('aria-label', `Rename region ${r.name}`);
+  ren.addEventListener('click', (e) => {
+    e.stopPropagation();
+    renameRegion(name, r.name);
+  });
+
+  const del = document.createElement('button');
+  del.type = 'button';
+  del.className = 'ctl del';
+  del.textContent = '\u2212';
+  del.setAttribute('aria-label', `Delete region ${r.name}`);
+  del.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (!layerEdit({ op: 'region', name: r.name, mask: null })) return;
+    if (el('region-name').value.trim() === r.name) el('region-name').value = '';
+    maskTarget();
+    say(`Deleted region ${r.name}`);
+  });
+
+  li.append(name, used, ren, del);
+  li.addEventListener('click', () => editRegion(r));
+  return li;
+}
+
+// A rename made from the list, as `[from, to]`, while its edit is applied.
+let renaming = null;
+
+// A region renamed some other way - by an undo or redo of a rename, or by
+// hand in the Scene tab - shows as a name gone and a name come with the same
+// definition. Only pairs that match one to one are taken for renames.
+function guessRenames(before, after) {
+  const has = (list, n) => list.some((r) => r.name === n);
+  const gone = before.filter((r) => !has(after, r.name));
+  const come = after.filter((r) => !has(before, r.name));
+  const out = [];
+  for (const g of gone) {
+    const to = come.filter((c) => c.mask === g.mask);
+    if (to.length === 1 && gone.filter((x) => x.mask === g.mask).length === 1) out.push([g.name, to[0].name]);
+  }
+  return out;
+}
+
+// Everything the page holds that refers to a renamed region follows it, as
+// the scene's own references do: the selection, its history, and the region
+// being edited.
+function followRename(from, to) {
+  const move = (json) => {
+    const { sel, region } = JSON.parse(json);
+    return JSON.stringify({ sel: renameRef(sel, from, to), region: region === from ? to : region });
+  };
+  state.sel = renameRef(state.sel, from, to);
+  state.selUndo = state.selUndo.map(move);
+  state.selRedo = state.selRedo.map(move);
+  if (state.region === from) editing(to);
+  else if (el('region-name').value.trim() === from) el('region-name').value = to;
+}
+
+// Whether `spec` refers to region `name` anywhere in it.
+function refersTo(spec, name) {
+  if (!spec || typeof spec !== 'object' || !name) return false;
+  if (spec.ref === name) return true;
+  return Object.values(spec).some((v) => refersTo(v, name));
+}
+
+// A copy of `spec` with every `ref: from` made `ref: to`.
+function renameRef(spec, from, to) {
+  if (Array.isArray(spec)) return spec.map((v) => renameRef(v, from, to));
+  if (!spec || typeof spec !== 'object') return spec;
+  const out = {};
+  for (const [k, v] of Object.entries(spec)) out[k] = k === 'ref' && v === from ? to : renameRef(v, from, to);
+  return out;
+}
+
+// Loads a region's own definition - not a reference to it - so that what is
+// saved back replaces it rather than wrapping it.
+function editRegion(r) {
+  try {
+    setSel(JSON.parse(state.session.spec_json(r.mask)));
+  } catch (e) {
+    return fail(e);
+  }
+  editing(r.name);
+}
+
+// Marks which region the selection came from, if any, and makes the name box
+// say so: the box is what Save writes to, so it must never go on naming a
+// region the selection no longer comes from.
+function editing(name) {
+  state.region = name;
+  el('region-name').value = name ?? '';
+  regionButtons();
+  maskTarget();
+}
+
+function renameRegion(span, from) {
+  const input = document.createElement('input');
+  input.className = 'rename';
+  input.value = from;
+  input.setAttribute('aria-label', 'Region name');
+  let done = false;
+  const finish = (keep) => {
+    if (done) return;
+    done = true;
+    const to = input.value.trim();
+    if (!keep || !to || to === from) return regionList();
+    // The selection, and whatever else names the region, follow it by way
+    // of regionMenu.
+    renaming = [from, to];
+    let ok;
+    try {
+      ok = layerEdit({ op: 'rename-region', from, to });
+    } finally {
+      renaming = null;
+    }
+    if (ok) say(`Renamed region ${from} to ${to}`);
+    else regionList();
+  };
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') finish(true);
+    if (e.key === 'Escape') finish(false);
+  });
+  input.addEventListener('blur', () => finish(true));
+  input.addEventListener('click', (e) => e.stopPropagation());
+  span.replaceWith(input);
+  input.focus();
+  input.select();
 }
 
 for (const b of document.querySelectorAll('#select-menu button')) {
@@ -1466,7 +1696,7 @@ for (const key of ['grow', 'smooth', 'feather']) {
   const input = el(`refine-${key}`);
   input.addEventListener('input', () => {
     if (!state.sel) return;
-    refineFrom ??= JSON.stringify(state.sel);
+    refineFrom ??= snapshot();
     const next = { ...state.sel };
     const v = +input.value;
     if (v) next[key] = v;
@@ -1605,7 +1835,12 @@ function maskTarget() {
   b.title = why ?? `Make the selection the mask of ${layer.label}`;
   el('sel-layer').disabled = !layer;
   el('sel-layer-name').textContent = layer?.label ?? '';
-  el('save-region').disabled = !state.sel || !any || !el('region-name').value.trim();
+  const name = el('region-name').value.trim();
+  const save = el('save-region');
+  save.disabled = !state.sel || !any || !name;
+  const exists = state.regions.some((r) => r.name === name);
+  save.textContent = exists ? `Update ${name}` : 'Save as region';
+  save.title = exists ? `Replace the definition of ${name} with the selection` : 'Save the selection under this name';
   el('copy').disabled = !state.sel;
 }
 
@@ -1631,10 +1866,11 @@ el('region-form').addEventListener('submit', (e) => {
   e.preventDefault();
   const name = el('region-name').value.trim();
   if (!name || !state.sel) return;
+  const exists = state.regions.some((r) => r.name === name);
   if (layerEdit({ op: 'region', name, mask: JSON.stringify(state.sel) })) {
-    el('region-name').value = '';
-    say(`Saved region ${name}`);
-    maskTarget();
+    // Saved, it is the region being worked on: another Update replaces it.
+    editing(name);
+    say(`${exists ? 'Updated' : 'Saved'} region ${name}`);
   }
 });
 

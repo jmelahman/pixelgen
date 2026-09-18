@@ -836,13 +836,15 @@ ul {
 
 /* The stack: a bordered well of rows, as a layer panel always is, so the
    list reads as one object rather than as loose text. */
-#layers {
+#layers,
+#region-list {
   border: 1px solid var(--rule);
   border-radius: 3px;
   background: var(--panel);
   flex: none;
 }
-#layers li {
+#layers li,
+#region-list li {
   display: flex;
   align-items: center;
   gap: 0.6rem;
@@ -853,13 +855,16 @@ ul {
   cursor: pointer;
   user-select: none;
 }
-#layers li:last-child {
+#layers li:last-child,
+#region-list li:last-child {
   border-bottom: 0;
 }
-#layers li:hover {
+#layers li:hover,
+#region-list li:hover {
   background: var(--ink-2);
 }
-#layers li[aria-selected="true"] {
+#layers li[aria-selected="true"],
+#region-list li.current {
   background: var(--accent-soft);
   box-shadow: inset 2px 0 0 var(--accent);
 }
@@ -873,16 +878,19 @@ ul {
 #layers li.over {
   box-shadow: inset 0 2px 0 var(--accent);
 }
-#layers li.none {
+#layers li.none,
+#region-list li.none {
   color: var(--dim);
   font: 400 0.875rem/1.5 var(--sans);
   padding: 0.6rem 0.75rem;
   cursor: default;
 }
-#layers li.none:hover {
+#layers li.none:hover,
+#region-list li.none:hover {
   background: transparent;
 }
-#layers .name {
+#layers .name,
+#region-list .name {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1175,6 +1183,35 @@ input[type="range"] {
 }
 #region-name:focus {
   border-color: var(--dim);
+}
+
+/* The regions: a well like the layer stack, under the save form. */
+.regions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--rule-soft);
+}
+#region-list .type {
+  text-transform: none;
+  letter-spacing: 0.04em;
+}
+/* The name loads the region; it is a button only so the keyboard can. */
+#region-list button.name {
+  flex: 1;
+  padding: 0.2rem 0.25rem;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+#region-list .ren,
+#region-list .del {
+  flex: none;
+  padding: 0.15rem 0.5rem;
 }
 
 /* ── help ─────────────────────────────────────────────────────────────── */

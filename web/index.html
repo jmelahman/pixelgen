@@ -105,7 +105,7 @@
 
     <nav class="tabs">
       <button data-tab="layers" aria-pressed="true">Layers</button>
-      <button data-tab="draw" aria-pressed="false">Mask</button>
+      <button data-tab="draw" aria-pressed="false">Select</button>
       <button data-tab="scene" aria-pressed="false">Scene</button>
       <button id="help" class="help-toggle" type="button" aria-expanded="false"
               aria-label="Show help" title="Show help">?</button>
@@ -167,6 +167,12 @@
           <kbd>Shift</kbd> to add to the selection, <kbd>Alt</kbd> to take
           away from it, and both to keep only where they overlap &mdash; or
           set the mode with the buttons.
+        </p>
+        <p>
+          Click a region in the list to load it as the selection; change it
+          and <b>Update</b> it under the same name. <b>Rename</b> one and
+          every layer and region that uses it follows. A region still in
+          use, by the scene or by the selection, cannot be deleted.
         </p>
         <p>
           <b>Marquee</b> (<kbd>M</kbd>) drags a box or an oval.
@@ -276,6 +282,11 @@
         <input id="region-name" placeholder="region name" aria-label="Region name" autocomplete="off">
         <button id="save-region" class="ctl" type="submit" disabled>Save as region</button>
       </form>
+
+      <section class="regions">
+        <p class="eyebrow">Regions <small id="nregions"></small></p>
+        <ul id="region-list" aria-label="Regions"></ul>
+      </section>
     </div>
 
     <div class="tab" data-tab="scene" hidden>

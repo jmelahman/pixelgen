@@ -201,9 +201,56 @@ fn regions_are_set_replaced_and_removed() {
     assert_eq!(s.regions["sky"].rect.unwrap().w, 0.5);
     assert!(s.set_region("  ", Some(spec(LEFT))).is_err());
 
+    let used = s.set_region("sky", None).unwrap_err().to_string();
+    assert!(used.contains("layer rain[0]"), "{used}");
+    assert!(s.regions.contains_key("sky"), "a region in use was removed");
+
+    s.set_layer_mask(0, None).unwrap();
     s.set_region("sky", None).unwrap();
     assert!(!s.regions.contains_key("sky"));
-    assert!(s.validate().is_err(), "the layer still refers to the removed region");
+    s.validate().unwrap();
+}
+
+#[test]
+fn renaming_a_region_renames_every_reference_to_it() {
+    let mut s = scene();
+    s.set_region("sky", Some(spec(TOP))).unwrap();
+    s.set_region("upper-left", Some(spec(&format!("all: [{{ref: sky}}, {{{LEFT}}}]")))).unwrap();
+    s.set_region("ground", Some(spec("ref: sky\ninvert: true"))).unwrap();
+    s.set_layer_mask(0, Some(spec("steps: [{add: {ref: sky}}, {sub: {ref: ground}}]"))).unwrap();
+    assert_eq!(s.region_users("sky"), ["layer rain[0]", "region ground", "region upper-left"]);
+
+    s.rename_region("sky", " heavens ").unwrap();
+    s.validate().unwrap();
+    assert!(!s.regions.contains_key("sky"));
+    assert!(s.region_users("sky").is_empty());
+    assert_eq!(s.region_users("heavens").len(), 3);
+    assert_eq!(s.layers[0].mask.as_ref().unwrap().steps[0].add.as_ref().unwrap().r#ref, "heavens");
+    assert_eq!(s.regions["ground"].r#ref, "heavens");
+
+    assert!(s.rename_region("heavens", "ground").is_err(), "renamed onto another region");
+    assert!(s.rename_region("heavens", " ").is_err());
+    assert!(s.rename_region("nowhere", "elsewhere").is_err());
+    assert!(s.rename_region("nowhere", "nowhere").is_err());
+    s.rename_region("heavens", "heavens").unwrap();
+    s.rename_region(" heavens", "heavens ").unwrap();
+    assert!(s.regions.contains_key("heavens"));
+}
+
+#[test]
+fn an_empty_region_name_is_not_every_reference() {
+    let yaml = "
+regions:
+  '': { rect: { x: 0, y: 0, w: 1, h: 0.5 } }
+  sky: { rect: { x: 0, y: 0, w: 0.5, h: 1 } }
+layers:
+  - { type: rain, mask: { ref: sky } }
+";
+    let mut s = Scene::parse(yaml).unwrap();
+    assert!(s.region_users("").is_empty());
+    assert!(s.rename_region("", "x").is_err());
+    s.set_region("", None).unwrap_err();
+    assert_eq!(s.region_users("sky"), ["layer rain[0]"]);
 }
 
 #[test]

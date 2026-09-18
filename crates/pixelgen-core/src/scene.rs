@@ -170,6 +170,10 @@ pub enum Error {
     Param(String),
     /// An edit named a region with no name.
     RegionName,
+    /// A rename onto a name another region already has.
+    RegionExists(String),
+    /// A region removed while layers or other regions still refer to it.
+    RegionInUse(String, Vec<String>),
 }
 
 impl fmt::Display for Error {
@@ -184,6 +188,10 @@ impl fmt::Display for Error {
             Error::NoLayer(i) => write!(f, "scene: there is no layer {i}"),
             Error::Param(m) => write!(f, "scene: {m}"),
             Error::RegionName => write!(f, "scene: a region needs a name"),
+            Error::RegionExists(n) => write!(f, "scene: there is already a region named {n:?}"),
+            Error::RegionInUse(n, users) => {
+                write!(f, "scene: region {n:?} is still used by {}", users.join(", "))
+            }
         }
     }
 }
@@ -393,10 +401,75 @@ impl Scene {
                 self.regions.insert(name.into(), simplify(s));
             }
             None => {
+                let users = self.region_users(name);
+                if !users.is_empty() {
+                    return Err(Error::RegionInUse(name.into(), users));
+                }
                 self.regions.remove(name);
             }
         }
         Ok(())
+    }
+
+    /// Rename a region, and every `ref` to it along with it, so the layers and
+    /// regions built on it go on selecting the same thing.
+    pub fn rename_region(&mut self, from: &str, to: &str) -> Result<(), Error> {
+        let (from, to) = (from.trim(), to.trim());
+        if from.is_empty() || to.is_empty() {
+            return Err(Error::RegionName);
+        }
+        if !self.regions.contains_key(from) {
+            return Err(mask::Error::UnknownRegion(from.into()).into());
+        }
+        if from == to {
+            return Ok(());
+        }
+        if self.regions.contains_key(to) {
+            return Err(Error::RegionExists(to.into()));
+        }
+        let def = self.regions.remove(from).expect("checked above");
+        self.regions.insert(to.into(), def);
+        let masks = self.layers.iter_mut().filter_map(|l| l.mask.as_mut());
+        for s in masks.chain(self.regions.values_mut()) {
+            rename_ref(s, from, to);
+        }
+        Ok(())
+    }
+
+    /// What refers to region `name` directly: layers by label, then regions
+    /// by name, as `layer rain` and `region sky`.
+    pub fn region_users(&self, name: &str) -> Vec<String> {
+        let layers = self.layers.iter().enumerate().filter_map(|(i, l)| {
+            l.mask.as_ref().filter(|m| refers_to(m, name)).map(|_| format!("layer {}", l.label(i)))
+        });
+        let regions = self
+            .regions
+            .iter()
+            .filter(|(n, s)| *n != name && refers_to(s, name))
+            .map(|(n, _)| format!("region {n}"));
+        layers.chain(regions).collect()
+    }
+}
+
+/// Every spec nested in `s`, not counting `s` itself.
+fn children(s: &Spec) -> impl Iterator<Item = &Spec> {
+    let steps = s.steps.iter().flat_map(|st| [&st.add, &st.sub, &st.and]);
+    s.all.iter().chain(s.any.iter()).chain(steps.flatten())
+}
+
+// An empty `ref` is no reference at all, so it never matches a name - not
+// even an empty one, which a hand-written scene can still give a region.
+fn refers_to(s: &Spec, name: &str) -> bool {
+    !name.is_empty() && (s.r#ref == name || children(s).any(|c| refers_to(c, name)))
+}
+
+fn rename_ref(s: &mut Spec, from: &str, to: &str) {
+    if !from.is_empty() && s.r#ref == from {
+        s.r#ref = to.into();
+    }
+    let steps = s.steps.iter_mut().flat_map(|st| [&mut st.add, &mut st.sub, &mut st.and]);
+    for sub in s.all.iter_mut().chain(s.any.iter_mut()).chain(steps.flatten()) {
+        rename_ref(sub, from, to);
     }
 }
 

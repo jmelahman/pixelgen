@@ -106,6 +106,12 @@ enum Edit {
         name: String,
         mask: Option<String>,
     },
+    /// Rename a region, and every reference to it.
+    #[serde(rename = "rename-region")]
+    RenameRegion {
+        from: String,
+        to: String,
+    },
 }
 
 fn parse_spec(yaml: Option<String>) -> Result<Option<Spec>, JsError> {
@@ -192,6 +198,7 @@ impl Session {
             Edit::Mask { i, mask } => s.set_layer_mask(i, parse_spec(mask)?),
             Edit::Combine { i, mask, mode } => s.combine_layer_mask(i, parse_spec(mask)?, mode),
             Edit::Region { name, mask } => s.set_region(&name, parse_spec(mask)?),
+            Edit::RenameRegion { from, to } => s.rename_region(&from, &to),
         }
         .map_err(err)?;
         s.validate().map_err(err)?;
@@ -385,9 +392,18 @@ impl Session {
         serde_yaml::to_string(&spec).map_err(err)
     }
 
-    /// The names of the scene's regions, as JSON.
+    /// The scene's regions as JSON, in name order: each one's `name`, its
+    /// definition as a YAML `mask`, and the layers and regions that `use` it.
     pub fn regions(&self) -> Result<String, JsError> {
-        Ok(serde_json::to_string(&self.scene.regions.keys().collect::<Vec<_>>())?)
+        let mut out = Vec::new();
+        for (name, spec) in &self.scene.regions {
+            out.push(json!({
+                "name": name,
+                "mask": serde_yaml::to_string(spec).map_err(err)?,
+                "users": self.scene.region_users(name),
+            }));
+        }
+        Ok(serde_json::to_string(&out)?)
     }
 
     /// The color of the base cell under a normalized point, as `#rrggbb`:
