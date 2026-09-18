@@ -7,7 +7,7 @@ use crate::pixel::{luma, Image};
 /// A box filter is the right choice precisely because it is the crude one.
 /// Bilinear or Lanczos would preserve detail and gradients inside each
 /// destination cell, which is the opposite of what is wanted: a cell has to
-/// come out as one flat colour, because that is what makes it read as a pixel
+/// come out as one flat color, because that is what makes it read as a pixel
 /// rather than as a blurred photograph.
 pub fn downscale(src: &Image, w: usize, h: usize) -> Image {
     let mut dst = Image::new(w, h);
@@ -36,7 +36,7 @@ pub fn downscale(src: &Image, w: usize, h: usize) -> Image {
     dst
 }
 
-/// Upscale by an integer factor, nearest-neighbour.
+/// Upscale by an integer factor, nearest-neighbor.
 ///
 /// Nearest is not a fallback here, it is the point: every output pixel must be
 /// an exact copy of a grid cell, with hard edges between cells.
@@ -63,7 +63,7 @@ pub fn fit_size(src_w: usize, src_h: usize, w: usize) -> (usize, usize) {
 /// A 3x3 per-channel median, run at full resolution before downscaling.
 ///
 /// Photographic noise survives a box filter as speckle and then gets locked in
-/// by quantization, where it reads as stray mis-coloured cells. Removing it
+/// by quantization, where it reads as stray mis-colored cells. Removing it
 /// first is much cheaper than trying to clean it up afterwards.
 pub fn median3(src: &Image) -> Image {
     let mut dst = Image::new(src.w, src.h);
@@ -102,7 +102,7 @@ pub fn saturate(img: &mut Image, amount: f32) {
     }
 }
 
-/// Push contrast around mid grey.
+/// Push contrast around mid gray.
 pub fn contrast(img: &mut Image, amount: f32) {
     if (amount - 1.0).abs() < f32::EPSILON {
         return;

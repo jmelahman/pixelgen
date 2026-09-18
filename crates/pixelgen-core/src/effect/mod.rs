@@ -27,7 +27,7 @@ pub struct Context<'a> {
     pub frames: usize,
 
     /// The static pixelated, palette-snapped source image. Effects read it to
-    /// sample original colours; it is shared and immutable.
+    /// sample original colors; it is shared and immutable.
     pub base: &'a Image,
     /// The region the effect is confined to.
     pub mask: &'a Mask,
@@ -101,7 +101,7 @@ pub const CATALOG: &[(&str, &str)] = &[
     ("steam", "Wisps rising out of the masked region"),
     ("sway", "Bend a region side to side, for foliage and hanging things"),
     ("twinkle", "Per-pixel sparkle on the bright points in a region"),
-    ("vignette", "Darken towards the edges of the frame"),
+    ("vignette", "Darken toward the edges of the frame"),
 ];
 
 pub fn names() -> Vec<&'static str> {

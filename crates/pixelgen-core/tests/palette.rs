@@ -79,11 +79,11 @@ fn dither_stays_in_palette_and_averages_out() {
             }
         }
     }
-    // A flat mid grey on a black/white palette should come out roughly half
+    // A flat mid gray on a black/white palette should come out roughly half
     // lit; error diffusion that had gone wrong would collapse to one value.
     assert!(
         (64..=192).contains(&white),
-        "dithered 50% grey gave {white}/256 white pixels, expected near half"
+        "dithered 50% gray gave {white}/256 white pixels, expected near half"
     );
 }
 

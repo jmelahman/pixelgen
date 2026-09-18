@@ -1,8 +1,8 @@
 /* pixelgen — the browser editor
    The renderer takes a photograph apart on a grid and rebuilds it from a fixed
-   set of colours, so the page around it is set as the sheet that work is laid
+   set of colors, so the page around it is set as the sheet that work is laid
    out on: hairline rules, a title block recording what the scene resolved to,
-   labels in the drafting hand, and no colour of its own anywhere near the
+   labels in the drafting hand, and no color of its own anywhere near the
    plate. The only saturated things on the page are the image's own palette and
    the mask overlay, which has to be seen through. */
 
@@ -85,7 +85,7 @@
 [hidden] { display: none !important; }
 
 /* Thin rules rather than the platform's slabs, so a scrolling panel does not
-   grow a heavy grey edge the rest of the page does not have. */
+   grow a heavy gray edge the rest of the page does not have. */
 * { scrollbar-width: thin; scrollbar-color: var(--rule) transparent; }
 
 body {

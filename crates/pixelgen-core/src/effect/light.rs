@@ -46,7 +46,7 @@ impl Effect for Flicker {
         // touches in step, so per-pixel variation here would look like static.
         //
         // The octaves are amplitude-weighted rather than averaged. Averaging N
-        // independent noise values pulls the result towards their common mean
+        // independent noise values pulls the result toward their common mean
         // and quietly throttles the flicker to a few percent no matter what
         // `amount` says; halving the weight each octave keeps the slow
         // component at full strength and lets the faster ones only roughen it.

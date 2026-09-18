@@ -33,7 +33,7 @@ pub fn run(
     std::fs::write(&dst, text)?;
 
     println!("wrote {}", dst.display());
-    println!("  {}x{} cells, {} colours", base.w, base.h, matcher.palette.len());
+    println!("  {}x{} cells, {} colors", base.w, base.h, matcher.palette.len());
     println!(
         "  horizon guessed at y={:.2}; highlights are luma>{:.2} ({:.1}% of pixels)",
         a.horizon,
@@ -41,7 +41,7 @@ pub fn run(
         a.bright_frac * 100.0
     );
     if let Some(l) = &a.warm_light {
-        println!("  warm light source near ({:.2}, {:.2}), colour {}", l.x, l.y, l.hex);
+        println!("  warm light source near ({:.2}, {:.2}), color {}", l.x, l.y, l.hex);
     }
     if a.cool_frac > 0.0 {
         println!(

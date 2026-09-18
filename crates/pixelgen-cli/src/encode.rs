@@ -11,7 +11,7 @@ use pixelgen_core::pixel::Image;
 
 use crate::image_io::{to8, write_png};
 
-/// The output formats, recognised from the file extension.
+/// The output formats, recognized from the file extension.
 #[derive(Clone, Copy, PartialEq)]
 pub enum Format {
     Video(&'static str),
@@ -57,7 +57,7 @@ pub struct Options<'a> {
     pub path: &'a Path,
     pub format: Format,
     pub fps: usize,
-    /// Integer nearest-neighbour upscale factor.
+    /// Integer nearest-neighbor upscale factor.
     pub scale: usize,
     /// x264/VP9 CRF; lower is better. `None` takes the per-codec default.
     pub quality: Option<u32>,
@@ -92,7 +92,7 @@ pub fn progress(quiet: bool) -> impl Fn(usize, usize) + Sync {
 }
 
 /// Streams raw frames at the pixel-grid resolution into ffmpeg and lets ffmpeg
-/// do the nearest-neighbour upscale. Sending small frames and scaling at the
+/// do the nearest-neighbor upscale. Sending small frames and scaling at the
 /// far end moves a fraction of the bytes through the pipe and produces output
 /// identical to upscaling first.
 fn write_video(frames: &[Image], o: &Options, ext: &str) -> Result<(), Box<dyn Error>> {

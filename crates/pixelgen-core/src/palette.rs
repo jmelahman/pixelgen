@@ -6,13 +6,13 @@ use serde::{Deserialize, Serialize};
 pub type Palette = Vec<Rgb>;
 
 /// Bits per channel of the lookup table. Six gives 262144 entries, which is
-/// small enough to build in a few milliseconds and fine enough that the colour
-/// it returns differs from the true nearest only for colours sitting almost
+/// small enough to build in a few milliseconds and fine enough that the color
+/// it returns differs from the true nearest only for colors sitting almost
 /// exactly on a boundary between two palette entries.
 const LUT_BITS: u32 = 6;
 const LUT_SIZE: usize = 1 << (LUT_BITS * 3);
 
-/// Matcher snaps arbitrary colours onto a fixed palette.
+/// Matcher snaps arbitrary colors onto a fixed palette.
 ///
 /// Every frame is snapped, so this is the hottest path in the renderer; a
 /// precomputed table turns a linear search over the palette into one index.
@@ -24,7 +24,7 @@ pub struct Matcher {
 
 /// Weighted RGB distance ("redmean"), a cheap approximation of perceptual
 /// difference that is markedly better than plain Euclidean RGB at the thing
-/// that matters here: not letting a saturated colour collapse onto a grey.
+/// that matters here: not letting a saturated color collapse onto a gray.
 pub fn dist2(a: Rgb, b: Rgb) -> f32 {
     let rmean = (a.r + b.r) * 0.5;
     let (dr, dg, db) = (a.r - b.r, a.g - b.g, a.b - b.b);
@@ -60,7 +60,7 @@ impl Matcher {
     ///
     /// Frames are snapped this way rather than dithered because a dither
     /// pattern recomputed per frame crawls: the pattern shifts wherever a pixel
-    /// lands on the other side of a threshold, and a field of flat colour
+    /// lands on the other side of a threshold, and a field of flat color
     /// appears to boil.
     pub fn snap(&self, img: &mut Image) {
         for i in (0..img.pix.len()).step_by(3) {
@@ -130,7 +130,7 @@ pub fn nearest_in(pal: &[Rgb], c: Rgb) -> usize {
 /// Plain random seeding regularly loses a small bright element (a lamp, a sign)
 /// into a cluster dominated by the background, and that element is usually the
 /// subject. k-means++ picks seeds spread apart by distance, so a small but
-/// distinct colour survives.
+/// distinct color survives.
 pub fn extract(img: &Image, k: usize, seed: u32) -> Palette {
     let samples = sample_pixels(img, 20_000);
     let k = k.clamp(2, 256).min(samples.len());
@@ -185,7 +185,7 @@ pub fn extract(img: &Image, k: usize, seed: u32) -> Palette {
         for (i, c) in centers.iter_mut().enumerate() {
             if counts[i] == 0 {
                 // An empty cluster is wasted palette capacity; respawn it on a
-                // random sample rather than leave a colour unused.
+                // random sample rather than leave a color unused.
                 *c = samples[(rand() * (samples.len() - 1) as f32) as usize];
                 moved = true;
                 continue;
@@ -219,11 +219,11 @@ fn sample_pixels(img: &Image, want: usize) -> Vec<Rgb> {
     out
 }
 
-/// Order a palette into greys first, then hue buckets, each by brightness.
+/// Order a palette into grays first, then hue buckets, each by brightness.
 ///
 /// The order is not cosmetic. `palette_cycle` animates by rotating a contiguous
-/// range of indices, which only reads as flowing colour if neighbouring indices
-/// are neighbouring shades.
+/// range of indices, which only reads as flowing color if neighboring indices
+/// are neighboring shades.
 pub fn sort(mut pal: Palette) -> Palette {
     pal.sort_by(|a, b| key(*a).partial_cmp(&key(*b)).unwrap());
     pal
@@ -232,7 +232,7 @@ pub fn sort(mut pal: Palette) -> Palette {
 fn key(c: Rgb) -> (u8, u8, f32) {
     let (h, s, l) = hsl(c);
     if s < 0.12 {
-        (0, 0, l) // greys lead, ordered by lightness
+        (0, 0, l) // grays lead, ordered by lightness
     } else {
         (1, (h * 12.0) as u8, luma(c.r, c.g, c.b))
     }
@@ -262,7 +262,7 @@ pub struct HexError(pub String);
 
 impl std::fmt::Display for HexError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "invalid hex colour {:?}", self.0)
+        write!(f, "invalid hex color {:?}", self.0)
     }
 }
 
@@ -285,7 +285,7 @@ pub fn parse_hex(s: &str) -> Result<Rgb, HexError> {
     }
 }
 
-/// Parse a whole palette, reporting the first colour that will not parse.
+/// Parse a whole palette, reporting the first color that will not parse.
 pub fn parse_hex_all(list: &[&str]) -> Result<Palette, HexError> {
     list.iter().map(|s| parse_hex(s)).collect()
 }

@@ -3,7 +3,7 @@
 //! Regions are the substitute for scene understanding: instead of a model
 //! telling the renderer where the sky or the lamp is, the author states it once
 //! in normalized coordinates or as a property of the base image - bright
-//! pixels, pixels near a colour, pixels cooler than their surroundings.
+//! pixels, pixels near a color, pixels cooler than their surroundings.
 
 use std::collections::HashMap;
 use std::fmt;
@@ -156,7 +156,7 @@ pub struct Range {
     pub max: f32,
 }
 
-/// Selects pixels near a colour, the practical way to grab "the neon sign" or
+/// Selects pixels near a color, the practical way to grab "the neon sign" or
 /// "the water" out of an already-quantized base.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -166,7 +166,7 @@ pub struct ColorIn {
     pub tolerance: f32,
 }
 
-/// Selects by colour temperature rather than by a particular colour. Positive
+/// Selects by color temperature rather than by a particular color. Positive
 /// values are cool, negative values are warm, and zero is neutral.
 ///
 /// This is the practical way to separate an interior from what is outside it,
@@ -187,7 +187,7 @@ pub struct Chroma {
     pub soft: f32,
 }
 
-/// How cool a colour is: blue minus red, normalized by brightness.
+/// How cool a color is: blue minus red, normalized by brightness.
 ///
 /// The normalization is what makes the measure usable. A shadowed blue tree
 /// trunk and a brightly lit patch of the same fog are equally cool, but their
@@ -247,7 +247,7 @@ impl fmt::Display for Error {
                 f,
                 "region reference {name:?} cannot also set {selector:?}; wrap both in an \"all\" instead"
             ),
-            Error::BadColor(s) => write!(f, "color selector: invalid hex colour {s:?}"),
+            Error::BadColor(s) => write!(f, "color selector: invalid hex color {s:?}"),
         }
     }
 }

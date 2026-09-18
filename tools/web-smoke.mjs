@@ -225,7 +225,7 @@ const out = empty ? { boxes: [[0, 0, 0, 0], [0, 0, 0, 0]], grid: [0, 0] } : awai
     }),
     frames: s.frames,
     fps: s.fps,
-    colours: s.palette.length,
+    colors: s.palette.length,
     layers: s.layers,
     counter: document.getElementById('counter').textContent,
     snippet: document.getElementById('snippet').value,
@@ -237,7 +237,7 @@ const out = empty ? { boxes: [[0, 0, 0, 0], [0, 0, 0, 0]], grid: [0, 0] } : awai
       const b = s.gif(1);
       return { bytes: b.length, magic: String.fromCharCode(...b.slice(0, 6)) };
     })(),
-    // Relabelled at load to whatever the browser can actually record.
+    // Relabeled at load to whatever the browser can actually record.
     video: document.getElementById('save-video').textContent.trim(),
     status: document.getElementById('status').textContent,
     // A blank canvas is the failure this whole test exists to catch.
@@ -269,12 +269,12 @@ server.close();
 
 const bad = [];
 if (empty) { console.log('ok (empty, no assertions run)'); process.exit(0); }
-if (!out.painted) bad.push('canvas is a flat colour');
+if (!out.painted) bad.push('canvas is a flat color');
 if (out.error) bad.push('scene error: ' + out.error);
 if (!out.layers.length) bad.push('no layers');
 if (!out.scene.trim()) bad.push('opening an image left the scene box empty');
 if (out.gif.magic !== 'GIF89a') bad.push('gif export produced ' + JSON.stringify(out.gif));
-if (!/^(MP4|WEBM) /.test(out.video)) bad.push('video item is labelled ' + JSON.stringify(out.video));
+if (!/^(MP4|WEBM) /.test(out.video)) bad.push('video item is labeled ' + JSON.stringify(out.video));
 if (out.boxes[0].join() !== out.boxes[1].join()) bad.push('overlay is not over the plate: ' + JSON.stringify(out.boxes));
 // The plate should be the largest whole multiple of the frame that fits: not
 // left at 1x in a large viewport, and not blown past the edges of a small one.

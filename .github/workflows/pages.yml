@@ -17,7 +17,7 @@ permissions:
   pages: write
   id-token: write
 
-# Let a running deploy finish rather than cancelling it half-published, but
+# Let a running deploy finish rather than canceling it half-published, but
 # queue at most one behind it.
 concurrency:
   group: pages

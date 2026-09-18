@@ -7,7 +7,7 @@ use pixelgen_core::scene::{Layer, Loop, Palette, Scene};
 use serde_yaml::Value;
 
 /// A synthetic source with a bright warm patch, a dark region and a gradient,
-/// so that luma- and colour-keyed masks all select something.
+/// so that luma- and color-keyed masks all select something.
 fn test_image(w: usize, h: usize) -> Image {
     let mut im = Image::new(w, h);
     for y in 0..h {
@@ -72,7 +72,7 @@ fn layer(name: &str) -> Layer {
 
 /// The central invariant of the renderer: phase 1 must reproduce phase 0
 /// exactly. Anything else shows up as a visible jump every time the wallpaper
-/// restarts, which is the one artefact a looping background cannot have.
+/// restarts, which is the one artifact a looping background cannot have.
 #[test]
 fn loop_closes_for_every_effect() {
     for name in effect::names() {
@@ -111,9 +111,9 @@ fn render_is_deterministic() {
     }
 }
 
-/// Effects blend in continuous colour, so the final snap is the only thing
+/// Effects blend in continuous color, so the final snap is the only thing
 /// keeping a frame inside the palette. If it ever stops running, the encoder
-/// silently starts producing colours the still image never had.
+/// silently starts producing colors the still image never had.
 #[test]
 fn frames_are_all_in_palette() {
     let layers = ["rain", "mist", "vignette"].into_iter().map(layer).collect();

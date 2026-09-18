@@ -10,8 +10,8 @@ use crate::resample;
 
 /// Encodes the frames as a looping GIF.
 ///
-/// Every frame is already exactly on a palette of at most 256 colours, which
-/// is precisely GIF's own model, so the frames go in as indices and no colour
+/// Every frame is already exactly on a palette of at most 256 colors, which
+/// is precisely GIF's own model, so the frames go in as indices and no color
 /// is re-decided on the way out.
 pub fn gif(frames: &[Image], pal: &Palette, scale: usize, fps: usize) -> Result<Vec<u8>, String> {
     if frames.is_empty() {
@@ -21,7 +21,7 @@ pub fn gif(frames: &[Image], pal: &Palette, scale: usize, fps: usize) -> Result<
         return Err("gif output needs a palette".into());
     }
     if pal.len() > 256 {
-        return Err(format!("gif supports at most 256 colours, the scene has {}", pal.len()));
+        return Err(format!("gif supports at most 256 colors, the scene has {}", pal.len()));
     }
 
     let table: Vec<u8> = pal.iter().flat_map(|c| [to8(c.r), to8(c.g), to8(c.b)]).collect();

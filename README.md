@@ -28,7 +28,7 @@ and frames are never dithered, so flat areas stay perfectly still and no
 dither pattern crawls between frames.
 
 Frames are rendered in parallel, one per core, and encoded at the pixel-grid
-resolution with ffmpeg doing the integer nearest-neighbour upscale.
+resolution with ffmpeg doing the integer nearest-neighbor upscale.
 
 ### Seamless looping
 
@@ -53,7 +53,7 @@ have actually moved in between.
 There is no scene understanding here. Effects are confined by masks declared in
 the scene file, in normalized `0..1` coordinates so they survive a change of
 `width`. Masks can be rectangles, ellipses, polygons, soft bands, a luma range, "pixels
-near this colour", or a colour-temperature range, combined with `all`
+near this color", or a color-temperature range, combined with `all`
 (intersect) and `any` (union), and modified by `invert`, `feather` and `gain`.
 
 ### Depth, without a depth map
@@ -64,7 +64,7 @@ stop at the wall. Drawing either with a box puts rain indoors and light on the
 rocks.
 
 The `chroma` selector solves this for the common case, because a scene that has
-an inside and an outside almost always splits by colour temperature — warm lamp,
+an inside and an outside almost always splits by color temperature — warm lamp,
 cool daylight. Selecting the cool half cuts the exact silhouette of whatever
 stands in the way:
 
@@ -131,8 +131,8 @@ playing beside the YAML and masks drawable over the frame.
 
 **Save** writes a PNG of the current frame, a GIF of the loop, or a recording
 of it. The GIF comes from the same encoder the CLI uses — frames are already
-indices into a palette of at most 256 colours, which is exactly what a GIF
-stores, so no colour is re-decided. Video is the browser's own recorder, which
+indices into a palette of at most 256 colors, which is exactly what a GIF
+stores, so no color is re-decided. Video is the browser's own recorder, which
 means MP4 in Chrome and Safari and WebM in Firefox; the menu says which you are
 getting. For video at wallpaper size, use the CLI and its ffmpeg.
 
@@ -182,7 +182,7 @@ Common flags: `--width` (grid width in cells), `--colors` (palette size),
 
 Flags may appear before or after the image argument. Every override is optional
 in the strict sense — only a flag actually passed overrides the scene file, so
-`--dither 0` means flat colour fields rather than "unset".
+`--dither 0` means flat color fields rather than "unset".
 
 ### Tuning the still first
 
@@ -241,8 +241,8 @@ layers:
 | `polygon: [{x, y}, ...]`    | An arbitrary outline                                        |
 | `band: {axis, start, end}`  | A soft gradient along `x` or `y`; reversed if `end < start` |
 | `luma: {min, max}`          | Pixels in a brightness range                                |
-| `color: {hex, tolerance}`   | Pixels near one colour                                      |
-| `chroma: {min, max, soft}`  | Pixels in a colour-temperature range                        |
+| `color: {hex, tolerance}`   | Pixels near one color                                       |
+| `chroma: {min, max, soft}`  | Pixels in a color-temperature range                         |
 | `ref: <name>`               | A region declared in `regions:`                             |
 | `all: [...]` / `any: [...]` | Intersection / union                                        |
 

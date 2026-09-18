@@ -92,7 +92,7 @@ function apply() {
   } catch (e) {
     // A scene that fails to prepare leaves the previous one on screen. The
     // alternative - blanking the canvas - throws away the thing being edited
-    // towards every time a half-typed line is momentarily invalid.
+    // toward every time a half-typed line is momentarily invalid.
     el('error').hidden = false;
     el('error').textContent = e.message ?? String(e);
     return;
@@ -117,7 +117,7 @@ function apply() {
 
   stat('grid', `${s.width}x${s.height}`);
   stat('loop', `${s.frames}f @ ${s.fps}`);
-  stat('colours', s.palette.length);
+  stat('colors', s.palette.length);
   stat('layers', s.layers.length || '-');
   draw();
 }
@@ -128,7 +128,7 @@ function stat(name, value) {
 
 // Scales the plate to fill the space it has.
 //
-// Whole multiples while the image fits: nearest-neighbour at 3.4x gives some
+// Whole multiples while the image fits: nearest-neighbor at 3.4x gives some
 // cells three screen pixels and some four, which reads as a grid that cannot
 // hold its rhythm. Only when the frame is larger than the viewport does it
 // fall back to a fractional fit, where there is no whole ratio to have.
@@ -217,7 +217,7 @@ function drawOverlay() {
 }
 
 // The one saturated thing the page adds to the image, so it is the page's own
-// accent rather than a colour invented here - and it is read from the
+// accent rather than a color invented here - and it is read from the
 // stylesheet, which is what keeps it right in both themes.
 function token(name) {
   const hex = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -405,7 +405,7 @@ el('save-png').addEventListener('click', () => saving('Writing…', async () => 
 
 // Written by the renderer itself rather than re-encoded: the frames are
 // already indices into the scene's palette, which is what a GIF stores, so
-// every colour survives exactly.
+// every color survives exactly.
 el('save-gif').addEventListener('click', () => saving('Writing GIF…', async () => {
   const bytes = state.session.gif(2);
   download(new Blob([bytes], { type: 'image/gif' }), `${stem(state.name)}-loop.gif`);

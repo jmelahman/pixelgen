@@ -79,8 +79,8 @@ fn color_matches_nearby_colours_only() {
         Spec { color: Some(ColorIn { hex: "#e63333".into(), tolerance: 0.2 }), ..Spec::default() },
         &base,
     );
-    assert!(m.at(5, 5) > 0.0, "the matching colour was not selected");
-    assert_eq!(m.at(0, 0), 0.0, "a distant colour was selected");
+    assert!(m.at(5, 5) > 0.0, "the matching color was not selected");
+    assert_eq!(m.at(0, 0), 0.0, "a distant color was selected");
 }
 
 #[test]

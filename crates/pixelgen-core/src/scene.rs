@@ -63,7 +63,7 @@ impl Default for Scene {
     }
 }
 
-/// Chooses the colour set. At most one source may be given: `colors` derives
+/// Chooses the color set. At most one source may be given: `colors` derives
 /// one from the image, `hex` and `file` supply a fixed one.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
@@ -71,7 +71,7 @@ pub struct Palette {
     pub colors: usize,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub hex: Vec<String>,
-    /// A file of whitespace-separated hex colours, relative to the scene file.
+    /// A file of whitespace-separated hex colors, relative to the scene file.
     ///
     /// The core never opens it: [`Scene::palette_file`] reports it and
     /// [`Scene::set_palette_hex`] folds the contents into `hex`, so loading is
@@ -90,13 +90,13 @@ impl Default for Palette {
 }
 
 /// Photographic corrections applied before quantization. They exist because a
-/// photograph's noise and muted colour rarely survive a small palette intact.
+/// photograph's noise and muted color rarely survive a small palette intact.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Prepare {
     /// A 3x3 median filter at full resolution, before averaging. Once pixels
     /// are merged into cells, speckles have already contaminated their
-    /// neighbourhood and cannot be isolated.
+    /// neighborhood and cannot be isolated.
     pub median: bool,
     pub saturation: f32,
     pub contrast: f32,

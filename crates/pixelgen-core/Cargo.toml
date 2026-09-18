@@ -11,7 +11,7 @@ serde = { workspace = true }
 serde_yaml = { workspace = true }
 
 # GIF is the one format the renderer can write on its own: frames are already
-# indices into a palette of at most 256 colours, which is what GIF stores.
+# indices into a palette of at most 256 colors, which is what GIF stores.
 # Everything else goes out through ffmpeg, which the browser does not have.
 gif = { workspace = true }
 

@@ -4,7 +4,7 @@
 /// `[0,1]`.
 ///
 /// Effects blend directly in sRGB space, which is what pixel-art palettes are
-/// authored in; going through linear light would wash out the flat colour steps
+/// authored in; going through linear light would wash out the flat color steps
 /// the style depends on.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Image {
@@ -49,7 +49,7 @@ impl Image {
         self.pix[o + 2] = b;
     }
 
-    /// Blend a colour over a pixel at coverage `a`.
+    /// Blend a color over a pixel at coverage `a`.
     ///
     /// Bounds and range are handled here so that effects, which mostly compute
     /// positions from noise and phase, never have to special-case the edge of

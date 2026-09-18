@@ -38,7 +38,7 @@ enum Command {
         /// Output PNG path (default <input>-pixel.png)
         #[arg(short, long)]
         out: Option<PathBuf>,
-        /// Integer nearest-neighbour upscale of the output
+        /// Integer nearest-neighbor upscale of the output
         #[arg(long, default_value_t = 1)]
         scale: usize,
     },
@@ -113,7 +113,7 @@ struct Common {
     /// Contrast multiplier applied before quantizing
     #[arg(long)]
     contrast: Option<f32>,
-    /// Palette file of hex colours, one per line
+    /// Palette file of hex colors, one per line
     #[arg(long = "palette")]
     palette_file: Option<PathBuf>,
     #[arg(long)]
@@ -285,7 +285,7 @@ fn animate(
     )?;
 
     println!(
-        "wrote {} - {} frames, {}x{} cells at x{scale}, {} colours, {:.1}s",
+        "wrote {} - {} frames, {}x{} cells at x{scale}, {} colors, {:.1}s",
         dst.display(),
         frames.len(),
         prep.base.w,

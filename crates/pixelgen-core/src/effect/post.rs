@@ -19,7 +19,7 @@ use crate::pixel::{lerp, smooth_step, Image};
 struct VignetteCfg {
     amount: f32,
     /// Where the darkening starts, as a fraction of the distance from the
-    /// centre to a corner.
+    /// center to a corner.
     radius: f32,
 }
 

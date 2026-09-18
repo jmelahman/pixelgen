@@ -62,7 +62,7 @@ pub struct Session {
 impl Session {
     /// `rgba` is a canvas `ImageData.data`: four bytes per pixel, row-major.
     /// The alpha channel is ignored - a photograph has no transparency to
-    /// preserve, and compositing it against an arbitrary page colour here
+    /// preserve, and compositing it against an arbitrary page color here
     /// would change the palette the scene is built from.
     #[wasm_bindgen(constructor)]
     pub fn new(rgba: &[u8], w: usize, h: usize) -> Result<Session, JsError> {
@@ -96,7 +96,7 @@ impl Session {
         let scene = Scene::parse(yaml).map_err(err)?;
         if let Some(f) = scene.palette_file() {
             return Err(JsError::new(&format!(
-                "palette.file ({f}) cannot be read in the browser - paste the colours into \
+                "palette.file ({f}) cannot be read in the browser - paste the colors into \
                  palette.hex instead"
             )));
         }
@@ -127,7 +127,7 @@ impl Session {
     }
 
     /// The layers that will actually be drawn, in order, as JSON strings.
-    /// Disabled ones are absent, which is what the editor should grey out.
+    /// Disabled ones are absent, which is what the editor should gray out.
     #[wasm_bindgen(getter)]
     pub fn layers(&self) -> Vec<String> {
         self.prep
@@ -180,7 +180,7 @@ impl Session {
     /// The whole loop as a GIF.
     ///
     /// The one moving format the page can write without a codec: the frames
-    /// are already indices into a palette of at most 256 colours, which is
+    /// are already indices into a palette of at most 256 colors, which is
     /// what a GIF stores, so nothing is re-encoded and the loop stays exact.
     /// Video goes out through the browser's own recorder instead.
     pub fn gif(&self, scale: usize) -> Result<Vec<u8>, JsError> {

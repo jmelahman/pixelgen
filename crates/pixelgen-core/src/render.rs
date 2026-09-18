@@ -166,9 +166,9 @@ impl Prepared {
             };
             l.effect.render(&mut dst, &ctx);
         }
-        // Effects blend in continuous colour; snapping afterwards is what keeps
+        // Effects blend in continuous color; snapping afterwards is what keeps
         // every frame strictly inside the palette, so rain over a wall uses the
-        // same handful of colours the wall was already made of.
+        // same handful of colors the wall was already made of.
         self.matcher.snap(&mut dst);
         dst
     }
