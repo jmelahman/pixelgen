@@ -49,12 +49,15 @@ async function open(file) {
   state.name = file.name || 'image';
   say(`${file.name || 'image'} - ${bitmap.width}x${bitmap.height}`);
 
-  // A scene already in the box is almost always meant for this image too -
-  // the usual move is to try the same scene on a second photograph. With an
-  // empty box there is nothing to preserve, so the photograph goes straight to
-  // the scene its own analysis suggests.
-  if (el('yaml').value.trim()) apply();
-  else starter();
+  // A scene is built for the photograph it was made on - its masks, palette
+  // and title were all read off that image - so a new one gets the scene its
+  // own analysis suggests. Whatever was selected, drawn or scrubbed to
+  // belonged to the old scene and goes with it.
+  state.selected = null;
+  state.frame = 0;
+  state.points = [];
+  starter();
+  emit();
 }
 
 // Replaces the scene with the one this photograph suggests.
