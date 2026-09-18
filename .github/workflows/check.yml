@@ -1,0 +1,24 @@
+# Runs the same hooks a commit runs locally, so a machine that has not
+# installed them cannot land what they would have caught.
+
+name: check
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  prek:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+
+      # build-web and web-smoke are skipped here only because the pages
+      # workflow runs exactly those two on the same commit, and has to build
+      # the bundle anyway to publish it.
+      - uses: j178/prek-action@4e14d07f9231acabce116ccfca13b13dd9755ece # v3.0.0
+        env:
+          SKIP: build-web,web-smoke

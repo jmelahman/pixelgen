@@ -44,11 +44,6 @@ jobs:
           have=$("$HOME/.cargo/bin/wasm-bindgen" --version 2>/dev/null | awk '{print $2}' || true)
           [ "$have" = "$want" ] || cargo install wasm-bindgen-cli --version "$want" --force
 
-      # build-web.sh runs wasm-opt when it finds one and skips it silently
-      # otherwise, which would publish a bundle twice the size it needs to be.
-      - name: Install wasm-opt
-        run: sudo apt-get install -y binaryen
-
       - run: ./build-web.sh
 
       - name: Smoke-test the page

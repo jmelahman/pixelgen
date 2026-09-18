@@ -34,22 +34,5 @@ cargo build --release -p pixelgen-wasm --target wasm32-unknown-unknown
 wasm-bindgen --target web --no-typescript --out-dir web/pkg \
   target/wasm32-unknown-unknown/release/pixelgen_wasm.wasm
 
-# Optional, and worth it: roughly halves the payload.
-#
-# The feature flags are not decoration. wasm-bindgen's glue grows the externref
-# table at startup, and a wasm-opt that has not been told reference-types are in
-# play rewrites the table with no room to grow - producing a bundle that builds
-# and ships and then dies on load with "failed to grow table by 4". An old
-# wasm-opt that does not recognise a flag fails here instead, which is the
-# better place for it.
-if command -v wasm-opt >/dev/null; then
-  wasm-opt -Os \
-    --enable-reference-types \
-    --enable-bulk-memory \
-    --enable-nontrapping-float-to-int \
-    --enable-sign-ext \
-    web/pkg/pixelgen_wasm_bg.wasm -o web/pkg/pixelgen_wasm_bg.wasm
-fi
-
 echo
 echo "serve it with:  python3 -m http.server -d web 8000"
