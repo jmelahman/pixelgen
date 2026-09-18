@@ -1,0 +1,61 @@
+# bundled OFL text is upstream's verbatim (the whitespace hooks rewrite it).
+exclude: ^web/assets/fonts/
+
+repos:
+  - repo: builtin
+    hooks:
+      - id: check-added-large-files
+      - id: check-executables-have-shebangs
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-toml
+      - id: check-yaml
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+      - id: trailing-whitespace
+
+  - repo: local
+    hooks:
+      - id: cargo-fmt
+        name: cargo fmt
+        entry: cargo fmt --all -- --check
+        language: rust
+        types: [rust]
+        pass_filenames: false
+
+      - id: cargo-clippy
+        name: cargo clippy
+        entry: cargo clippy --workspace --all-targets -- -D warnings
+        language: rust
+        types: [rust]
+        pass_filenames: false
+
+      - id: cargo-test
+        name: cargo test
+        entry: cargo test --workspace --quiet
+        language: rust
+        types: [rust]
+        pass_filenames: false
+
+      # The two that stand between a commit and a broken deploy. The page is
+      # published from `web/` as it is built here, so the only way to know it
+      # still starts is to build it and start it: a wasm bundle that imports
+      # cleanly on one machine and dies on another has already shipped once.
+      - id: build-web
+        name: build the wasm bundle
+        entry: ./build-web.sh
+        language: rust
+        # Must match the wasm-bindgen crate in Cargo.lock. build-web.sh reads
+        # the lock and refuses to run on a mismatch, so drift fails loudly here
+        # rather than shipping a bundle that dies at import.
+        additional_dependencies: ["cli:wasm-bindgen-cli:0.2.128"]
+        files: ^(crates/|Cargo\.(toml|lock)$|build-web\.sh$)
+        pass_filenames: false
+
+      # Node and Chrome, so the toolchain has nothing to offer it.
+      - id: web-smoke
+        name: smoke-test the page
+        entry: node tools/web-smoke.mjs
+        language: system
+        files: ^(crates/|web/|tools/web-smoke\.mjs$|build-web\.sh$)
+        pass_filenames: false
