@@ -38,20 +38,17 @@ async function open(file) {
   stop();
   state.session = new Session(data, bitmap.width, bitmap.height);
   state.name = file.name || 'image';
-  el('starter').disabled = false;
   say(`${file.name || 'image'} - ${bitmap.width}x${bitmap.height}`);
 
   // A scene already in the box is almost always meant for this image too -
   // the usual move is to try the same scene on a second photograph. With an
   // empty box there is nothing to preserve, so the photograph goes straight to
-  // the scene its own analysis suggests: the page is useful on arrival rather
-  // than after finding the right button.
+  // the scene its own analysis suggests.
   if (el('yaml').value.trim()) apply();
   else starter();
 }
 
-// Replaces the scene with the one this photograph suggests. Also the button,
-// which is how you get back here after editing.
+// Replaces the scene with the one this photograph suggests.
 function starter() {
   try {
     el('yaml').value = state.session.starter(state.name);
@@ -71,8 +68,6 @@ for (const type of ['dragover', 'drop']) {
     if (type === 'drop' && e.dataTransfer.files[0]) open(e.dataTransfer.files[0]).catch(fail);
   });
 }
-
-el('starter').addEventListener('click', starter);
 
 // ---------------------------------------------------------------- the scene
 

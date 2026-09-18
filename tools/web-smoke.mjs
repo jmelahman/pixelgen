@@ -178,8 +178,7 @@ const out = empty ? { boxes: [[0, 0, 0, 0], [0, 0, 0, 0]], grid: [0, 0] } : awai
   cx.fillStyle = '#fad278'; cx.beginPath(); cx.arc(120, 240, 14, 0, 7); cx.fill();
   const blob = await new Promise((r) => c.toBlob(r));
 
-  // No click on #starter: opening an image is supposed to leave a scene on
-  // screen by itself. The button only repeats it.
+  // Opening an image is supposed to leave a scene on screen by itself.
   await window.pixelgen.open(new File([blob], 'smoke.png'));
 
   const s = window.pixelgen.state.session;
