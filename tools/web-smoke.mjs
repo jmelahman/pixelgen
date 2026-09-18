@@ -8,7 +8,10 @@
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
 import { readFile, writeFile } from 'node:fs/promises';
-import { extname, join, normalize } from 'node:path';
+import { delimiter, extname, join, normalize } from 'node:path';
+import { homedir } from 'node:os';
+import { existsSync } from 'node:fs';
+import { pathToFileURL } from 'node:url';
 
 const ROOT = new URL('../web/', import.meta.url).pathname;
 const TYPES = {
@@ -30,7 +33,50 @@ const server = createServer(async (req, res) => {
 await new Promise((r) => server.listen(0, '127.0.0.1', r));
 const url = `http://127.0.0.1:${server.address().port}/`;
 
-const chrome = process.env.CHROME ?? 'chromium';
+// prek installs a hook's packages into its own env prefix rather than a
+// node_modules beside us, and an ESM bare specifier looks in neither (NODE_PATH
+// is a CommonJS-only mechanism). So fall back to walking the prefixes prek does
+// put on PATH.
+async function importBrowsers() {
+  try {
+    return await import('@puppeteer/browsers');
+  } catch (e) {
+    if (e.code !== 'ERR_MODULE_NOT_FOUND') throw e;
+  }
+  const roots = [
+    ...(process.env.NODE_PATH ?? '').split(delimiter),
+    ...(process.env.PATH ?? '').split(delimiter).map((p) => join(p, '..', 'lib', 'node_modules')),
+  ].filter(Boolean);
+  for (const root of roots) {
+    const entry = join(root, '@puppeteer', 'browsers', 'lib', 'main.js');
+    if (existsSync(entry)) return await import(pathToFileURL(entry).href);
+  }
+  throw new Error('no browser found and @puppeteer/browsers is not installed; set $CHROME');
+}
+
+// A browser, in order of preference: $CHROME, a system install, or a
+// chrome-headless-shell downloaded into ~/.cache/pixelgen/browsers. The
+// download is what makes this runnable on a machine with no Chrome at all;
+// @puppeteer/browsers is supplied by the hook (and by `npm i` for a manual
+// run), so its absence is only fatal when we actually need to download.
+async function findChrome() {
+  if (process.env.CHROME) return process.env.CHROME;
+  for (const name of ['chromium', 'chromium-browser', 'google-chrome', 'google-chrome-stable']) {
+    for (const dir of (process.env.PATH ?? '').split(delimiter)) {
+      const candidate = join(dir, name);
+      if (existsSync(candidate)) return candidate;
+    }
+  }
+  const { Browser, install, resolveBuildId, detectBrowserPlatform } = await importBrowsers();
+  const cacheDir = join(homedir(), '.cache', 'pixelgen', 'browsers');
+  const browser = Browser.CHROMEHEADLESSSHELL;
+  const platform = detectBrowserPlatform();
+  const buildId = await resolveBuildId(browser, platform, 'stable');
+  const installed = await install({ browser, buildId, cacheDir, platform });
+  return installed.executablePath;
+}
+
+const chrome = await findChrome();
 const proc = spawn(chrome, [
   '--headless=new', '--disable-gpu', '--no-sandbox',
   '--remote-debugging-port=0', '--user-data-dir=' + (process.env.TMPDIR ?? '/tmp') + '/pixelgen-smoke',

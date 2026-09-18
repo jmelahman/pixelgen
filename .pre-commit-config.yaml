@@ -37,29 +37,29 @@ repos:
         types: [rust]
         pass_filenames: false
 
-#      # The two that stand between a commit and a broken deploy. The page is
-#      # published from `web/` as it is built here, so the only way to know it
-#      # still starts is to build it and start it: a wasm bundle that imports
-#      # cleanly on one machine and dies on another has already shipped once.
-#      - id: build-web
-#        name: build the wasm bundle
-#        entry: ./build-web.sh
-#        language: rust
-#        # Must match the wasm-bindgen crate in Cargo.lock. build-web.sh reads
-#        # the lock and refuses to run on a mismatch, so drift fails loudly here
-#        # rather than shipping a bundle that dies at import.
-#        additional_dependencies: ["cli:wasm-bindgen-cli:0.2.128"]
-#        files: ^(crates/|Cargo\.(toml|lock)$|build-web\.sh$)
-#        pass_filenames: false
-#
-#      # prek supplies Node (22 is the first with a global WebSocket) and the
-#      # downloader the script falls back to when no Chrome is installed.
-#      - id: web-smoke
-#        name: smoke-test the page
-#        entry: node tools/web-smoke.mjs
-#        language: node
-#        language_version: ">=22"
-#        # yauzl unpacks the download without a system unzip.
-#        additional_dependencies: ["@puppeteer/browsers@3.2.2", "yauzl@3.2.0"]
-#        files: ^(crates/|web/|tools/web-smoke\.mjs$|build-web\.sh$)
-#        pass_filenames: false
+      # The two that stand between a commit and a broken deploy. The page is
+      # published from `web/` as it is built here, so the only way to know it
+      # still starts is to build it and start it: a wasm bundle that imports
+      # cleanly on one machine and dies on another has already shipped once.
+      - id: build-web
+        name: build the wasm bundle
+        entry: ./build-web.sh
+        language: rust
+        # Must match the wasm-bindgen crate in Cargo.lock. build-web.sh reads
+        # the lock and refuses to run on a mismatch, so drift fails loudly here
+        # rather than shipping a bundle that dies at import.
+        additional_dependencies: ["cli:wasm-bindgen-cli:0.2.128"]
+        files: ^(crates/|Cargo\.(toml|lock)$|build-web\.sh$)
+        pass_filenames: false
+
+      # prek supplies Node (22 is the first with a global WebSocket) and the
+      # downloader the script falls back to when no Chrome is installed.
+      - id: web-smoke
+        name: smoke-test the page
+        entry: node tools/web-smoke.mjs
+        language: node
+        language_version: ">=22"
+        # yauzl unpacks the download without a system unzip.
+        additional_dependencies: ["@puppeteer/browsers@3.2.2", "yauzl@3.2.0"]
+        files: ^(crates/|web/|tools/web-smoke\.mjs$|build-web\.sh$)
+        pass_filenames: false
