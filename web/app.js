@@ -39,11 +39,26 @@ async function open(file) {
   state.session = new Session(data, bitmap.width, bitmap.height);
   state.name = file.name || 'image';
   el('starter').disabled = false;
-  say(`${bitmap.width}x${bitmap.height} loaded. Press "Starter scene", or paste one.`);
+  say(`${file.name || 'image'} - ${bitmap.width}x${bitmap.height}`);
 
   // A scene already in the box is almost always meant for this image too -
-  // the usual move is to try the same scene on a second photograph.
+  // the usual move is to try the same scene on a second photograph. With an
+  // empty box there is nothing to preserve, so the photograph goes straight to
+  // the scene its own analysis suggests: the page is useful on arrival rather
+  // than after finding the right button.
   if (el('yaml').value.trim()) apply();
+  else starter();
+}
+
+// Replaces the scene with the one this photograph suggests. Also the button,
+// which is how you get back here after editing.
+function starter() {
+  try {
+    el('yaml').value = state.session.starter(state.name);
+    apply();
+  } catch (e) {
+    fail(e);
+  }
 }
 
 el('file').addEventListener('change', (e) => {
@@ -57,14 +72,7 @@ for (const type of ['dragover', 'drop']) {
   });
 }
 
-el('starter').addEventListener('click', () => {
-  try {
-    el('yaml').value = state.session.starter(state.name);
-    apply();
-  } catch (e) {
-    fail(e);
-  }
-});
+el('starter').addEventListener('click', starter);
 
 // ---------------------------------------------------------------- the scene
 
@@ -95,6 +103,7 @@ function apply() {
   view.height = overlay.height = s.height;
   el('viewport').classList.remove('empty');
 
+  fit();
   state.cache = new Array(s.frames);
   state.frame = Math.min(state.frame, s.frames - 1);
   el('scrub').max = s.frames - 1;
@@ -102,14 +111,48 @@ function apply() {
   for (const id of ['play', 'scrub', 'png', 'record']) el(id).disabled = false;
 
   swatches(s.palette);
-  layerList(s.layers);
+  layerList(s.layers, s.layer_types);
   if (state.maskLayer !== null && state.maskLayer >= s.layers.length) state.maskLayer = null;
 
-  say(`${s.width}x${s.height} cells, ${s.frames} frames at ${s.fps} fps, ${s.palette.length} colours`);
+  stat('grid', `${s.width}x${s.height}`);
+  stat('loop', `${s.frames}f @ ${s.fps}`);
+  stat('colours', s.palette.length);
+  stat('layers', s.layers.length || '-');
   draw();
 }
 
+function stat(name, value) {
+  document.querySelector(`[data-stat="${name}"]`).textContent = value;
+}
+
+// Scales the plate to fill the space it has.
+//
+// Whole multiples while the image fits: nearest-neighbour at 3.4x gives some
+// cells three screen pixels and some four, which reads as a grid that cannot
+// hold its rhythm. Only when the frame is larger than the viewport does it
+// fall back to a fractional fit, where there is no whole ratio to have.
+function fit() {
+  const s = state.session;
+  if (!s?.width) return;
+  const box = el('viewport').getBoundingClientRect();
+  const room = { w: box.width - 32, h: box.height - 32 };
+  const exact = Math.min(room.w / s.width, room.h / s.height);
+  const scale = exact >= 1 ? Math.floor(exact) : exact;
+  for (const c of [view, overlay]) {
+    c.style.width = `${s.width * scale}px`;
+    c.style.height = `${s.height * scale}px`;
+  }
+}
+
+// The plate is sized against the viewport, so a resize has to re-fit it.
+let refit = null;
+window.addEventListener('resize', () => {
+  clearTimeout(refit);
+  refit = setTimeout(fit, 100);
+});
+
 function swatches(hexes) {
+  el('ncolors').textContent = hexes.length;
   el('palette').replaceChildren(...hexes.map((h) => {
     const i = document.createElement('i');
     i.style.background = h;
@@ -118,24 +161,30 @@ function swatches(hexes) {
   }));
 }
 
-function layerList(names) {
+function layerList(names, types = []) {
   el('layers').replaceChildren(...names.map((name, i) => {
     const li = document.createElement('li');
-    li.textContent = name;
-    li.className = state.maskLayer === i ? 'on' : '';
-    li.title = 'Show this layer’s resolved mask';
+    li.append(name);
+    if (types[i]) {
+      const chip = document.createElement('span');
+      chip.className = 'type';
+      chip.textContent = types[i];
+      li.append(chip);
+    }
+    li.setAttribute('aria-pressed', state.maskLayer === i);
+    li.title = 'Draw this layer’s resolved mask over the frame';
     li.addEventListener('click', () => {
       state.maskLayer = state.maskLayer === i ? null : i;
       el('showmask').checked = state.maskLayer !== null;
-      layerList(names);
+      layerList(names, types);
       draw();
     });
     return li;
   }));
   if (!names.length) {
     const li = document.createElement('li');
+    li.className = 'none';
     li.textContent = 'No enabled layers - the loop will be a still image.';
-    li.style.color = 'var(--dim)';
     el('layers').append(li);
   }
 }
@@ -160,17 +209,19 @@ function draw() {
 function drawOverlay() {
   octx.clearRect(0, 0, overlay.width, overlay.height);
   if (state.maskLayer !== null && el('showmask').checked) {
-    const cov = state.session.layer_mask(state.maskLayer);
-    const img = octx.createImageData(overlay.width, overlay.height);
-    for (let i = 0; i < cov.length; i++) {
-      img.data[i * 4] = 255;
-      img.data[i * 4 + 1] = 64;
-      img.data[i * 4 + 2] = 96;
-      img.data[i * 4 + 3] = cov[i] * 0.55;
-    }
-    octx.putImageData(img, 0, 0);
+    paintCoverage(state.session.layer_mask(state.maskLayer), 0.55);
+    return;
   }
   drawShape();
+}
+
+// The one saturated thing the page adds to the image, so it is the page's own
+// accent rather than a colour invented here - and it is read from the
+// stylesheet, which is what keeps it right in both themes.
+function token(name) {
+  const hex = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const n = parseInt(hex.slice(1), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
 
 function tick() {
@@ -202,7 +253,7 @@ el('scrub').addEventListener('input', (e) => {
 el('showmask').addEventListener('change', (e) => {
   if (e.target.checked && state.maskLayer === null && state.session?.layers.length) {
     state.maskLayer = 0;
-    layerList(state.session.layers);
+    layerList(state.session.layers, state.session.layer_types);
   }
   drawOverlay();
 });
@@ -211,7 +262,7 @@ el('showmask').addEventListener('change', (e) => {
 
 const tabs = document.querySelectorAll('.tabs button');
 tabs.forEach((b) => b.addEventListener('click', () => {
-  tabs.forEach((o) => o.classList.toggle('on', o === b));
+  tabs.forEach((o) => o.setAttribute('aria-pressed', o === b));
   document.querySelectorAll('.tab').forEach((t) => {
     t.hidden = t.dataset.tab !== b.dataset.tab;
   });
@@ -222,7 +273,7 @@ for (const shape of ['polygon', 'rect', 'ellipse']) {
   el(`shape-${shape}`).addEventListener('click', () => {
     state.shape = shape;
     state.points = [];
-    ['polygon', 'rect', 'ellipse'].forEach((s) => el(`shape-${s}`).classList.toggle('on', s === shape));
+    ['polygon', 'rect', 'ellipse'].forEach((s) => el(`shape-${s}`).setAttribute('aria-pressed', s === shape));
     emit();
     drawOverlay();
   });
@@ -250,7 +301,7 @@ function drawShape() {
   const pts = state.points;
   if (!pts.length) return;
   const W = overlay.width, H = overlay.height;
-  octx.strokeStyle = '#7fb2ff';
+  octx.strokeStyle = `rgb(${token('--chalk').join(',')})`;
   octx.lineWidth = 1;
   octx.beginPath();
   if (state.shape === 'polygon') {
@@ -265,7 +316,7 @@ function drawShape() {
     }
   }
   octx.stroke();
-  octx.fillStyle = '#7fb2ff';
+  octx.fillStyle = `rgb(${token('--accent').join(',')})`;
   for (const p of pts) octx.fillRect(p.x * W - 1, p.y * H - 1, 3, 3);
 }
 
@@ -298,13 +349,14 @@ function emit() {
   }
 }
 
-function paintCoverage(cov) {
+function paintCoverage(cov, alpha = 0.45) {
+  const [r, g, b] = token('--accent');
   const img = octx.createImageData(overlay.width, overlay.height);
   for (let i = 0; i < cov.length; i++) {
-    img.data[i * 4] = 127;
-    img.data[i * 4 + 1] = 178;
-    img.data[i * 4 + 2] = 255;
-    img.data[i * 4 + 3] = cov[i] * 0.45;
+    img.data[i * 4] = r;
+    img.data[i * 4 + 1] = g;
+    img.data[i * 4 + 2] = b;
+    img.data[i * 4 + 3] = cov[i] * alpha;
   }
   octx.putImageData(img, 0, 0);
   drawShape();

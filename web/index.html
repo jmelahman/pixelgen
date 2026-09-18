@@ -2,81 +2,143 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>pixelgen</title>
+<meta name="description" content="Turn a photograph into an animated pixel-art background that loops seamlessly, in the browser.">
 <link rel="stylesheet" href="style.css">
 
-<header>
-  <h1>pixelgen</h1>
-  <label class="file">
-    <input type="file" id="file" accept="image/*" hidden>
-    Open image
-  </label>
-  <button id="starter" disabled>Starter scene</button>
-  <span id="status">Drop a photograph anywhere, or open one.</span>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="topbar">
+  <div>
+    <a class="mark" href="https://github.com/jmelahman/pixelgen">
+      <b>pixelgen</b><span>animated backgrounds</span>
+    </a>
+
+    <div class="actions">
+      <label class="ctl file">
+        <input type="file" id="file" accept="image/*" hidden>
+        Open image
+      </label>
+      <button id="starter" class="ctl" disabled>Starter scene</button>
+    </div>
+
+    <p id="status">Drop a photograph anywhere.</p>
+
+    <nav>
+      <a href="https://github.com/jmelahman/pixelgen#readme">Docs</a>
+      <a href="https://github.com/jmelahman/pixelgen">Source</a>
+    </nav>
+  </div>
 </header>
 
-<main>
-  <section id="stage">
-    <div id="viewport">
+<main id="main">
+  <section class="stage">
+    <div id="viewport" class="empty">
       <canvas id="view" width="16" height="16"></canvas>
       <!-- Sits exactly over the view, at grid resolution, for mask overlays
            and for the outline being drawn. -->
       <canvas id="overlay" width="16" height="16"></canvas>
-      <p id="drop">Drop a photograph here</p>
+
+      <div id="drop">
+        <p class="eyebrow">No plate loaded</p>
+        <p class="lede">Drop a photograph anywhere on this page, or open one above.</p>
+        <p class="quiet">
+          It is decoded to a canvas and handed straight to the renderer
+          compiled to wasm. Nothing is uploaded; there is no server to send it
+          to.
+        </p>
+      </div>
     </div>
 
-    <div id="transport">
-      <button id="play" disabled>Play</button>
-      <input type="range" id="scrub" min="0" max="0" value="0" disabled>
-      <output id="counter">-</output>
-      <label><input type="checkbox" id="showmask"> mask</label>
-      <button id="png" disabled>Frame PNG</button>
-      <button id="record" disabled>Record loop</button>
+    <div class="transport">
+      <button id="play" class="ctl" disabled>Play</button>
+      <input type="range" id="scrub" min="0" max="0" value="0" disabled
+             aria-label="Frame">
+      <output id="counter" for="scrub">&mdash;</output>
+      <label class="check"><input type="checkbox" id="showmask"> Mask</label>
+      <span class="spacer"></span>
+      <button id="png" class="ctl" disabled>Frame PNG</button>
+      <button id="record" class="ctl" disabled>Record loop</button>
     </div>
 
-    <div id="palette"></div>
+    <div class="strip">
+      <p class="eyebrow">Palette <small id="ncolors">&mdash;</small></p>
+      <div id="palette"></div>
+    </div>
   </section>
 
-  <section id="side">
+  <aside class="sheet">
+    <!-- The scene as built, set as a drawing's title block: what the numbers
+         in the YAML actually resolved to for this image. -->
+    <dl class="titleblock">
+      <div><dt>grid</dt><dd data-stat="grid">&mdash;</dd></div>
+      <div><dt>loop</dt><dd data-stat="loop">&mdash;</dd></div>
+      <div><dt>colours</dt><dd data-stat="colours">&mdash;</dd></div>
+      <div><dt>layers</dt><dd data-stat="layers">&mdash;</dd></div>
+    </dl>
+
     <nav class="tabs">
-      <button data-tab="scene" class="on">Scene</button>
-      <button data-tab="layers">Layers</button>
-      <button data-tab="draw">Draw a mask</button>
+      <button data-tab="scene" aria-pressed="true">Scene</button>
+      <button data-tab="layers" aria-pressed="false">Layers</button>
+      <button data-tab="draw" aria-pressed="false">Mask</button>
     </nav>
 
     <div class="tab" data-tab="scene">
-      <textarea id="yaml" spellcheck="false" placeholder="Open an image, then press &quot;Starter scene&quot;."></textarea>
+      <textarea id="yaml" spellcheck="false" aria-label="Scene"
+                placeholder="Open an image, then press Starter scene."></textarea>
       <pre id="error" hidden></pre>
     </div>
 
     <div class="tab" data-tab="layers" hidden>
+      <h2>In this scene</h2>
       <ul id="layers"></ul>
-      <h3>Effects</h3>
+      <p class="quiet">
+        Selecting a layer draws its resolved mask over the frame. A
+        <code>chroma</code> or <code>luma</code> selector is defined by what it
+        catches in this image, which is not something the YAML can show you.
+      </p>
+
+      <h2>Effects</h2>
       <ul id="catalog"></ul>
     </div>
 
     <div class="tab" data-tab="draw" hidden>
-      <p class="hint">
-        Click to place points around a region, then copy the selector into a
+      <h2>Draw a selector</h2>
+      <div class="shapes">
+        <button id="shape-polygon" class="ctl" aria-pressed="true">Polygon</button>
+        <button id="shape-rect" class="ctl" aria-pressed="false">Rectangle</button>
+        <button id="shape-ellipse" class="ctl" aria-pressed="false">Ellipse</button>
+        <span class="spacer"></span>
+        <button id="clear" class="ctl">Clear</button>
+      </div>
+
+      <p class="quiet">
+        Click around a region on the plate, then paste the result into a
         layer's <code>mask:</code> or into <code>regions:</code>. Coordinates
         are fractions of the frame, so they survive a change of
         <code>width</code>.
       </p>
-      <div class="row">
-        <button id="shape-polygon" class="on">Polygon</button>
-        <button id="shape-rect">Rectangle</button>
-        <button id="shape-ellipse">Ellipse</button>
-        <button id="clear">Clear</button>
-      </div>
-      <textarea id="snippet" spellcheck="false" readonly></textarea>
-      <button id="copy">Copy</button>
-      <p class="hint">
-        A drawn outline is a last resort. A selector that keys on the image
-        itself - <code>chroma</code> for a warm interior against cool daylight,
-        <code>luma</code> for highlights - cuts the exact silhouette of
-        whatever stands in front, and keeps doing so when you change the grid.
-      </p>
+
+      <textarea id="snippet" spellcheck="false" readonly aria-label="Selector"></textarea>
+      <button id="copy" class="ctl">Copy</button>
+
+      <details class="explain">
+        <summary>When not to draw one</summary>
+        <div>
+          <p>
+            An outline is a last resort. A selector keyed on the image itself
+            cuts the exact silhouette of whatever stands in front of the
+            region &mdash; a figure, a plant, the window frame &mdash; and keeps
+            doing it when you change the grid or swap the photograph.
+          </p>
+          <p>
+            That is what stops rain falling indoors: not a tighter rectangle,
+            but <code>chroma</code>, which reads cool daylight apart from a warm
+            interior.
+          </p>
+        </div>
+      </details>
     </div>
-  </section>
+  </aside>
 </main>
 
 <script type="module" src="app.js"></script>

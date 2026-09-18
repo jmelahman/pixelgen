@@ -7,7 +7,7 @@
 
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
 
 const ROOT = new URL('../web/', import.meta.url).pathname;
@@ -90,13 +90,29 @@ const evaluate = async (expression) => {
 
 await send('Runtime.enable');
 await send('Page.enable');
+// Size and theme before the first paint: the editor scales the plate to the
+// room it has, and a theme switched after the page has been painted leaves
+// headless compositing tiles from the old one in the screenshot.
+await send('Emulation.setDeviceMetricsOverride', {
+  width: Number(process.env.SHOT_WIDTH ?? 1440),
+  height: Number(process.env.SHOT_HEIGHT ?? 900),
+  deviceScaleFactor: 1,
+  mobile: false,
+});
+await send('Emulation.setEmulatedMedia', {
+  features: [{ name: 'prefers-color-scheme', value: process.argv.includes('--light') ? 'light' : 'dark' }],
+});
 await send('Page.navigate', { url });
 // The module does top-level await on the wasm init; poll rather than guess.
 for (let i = 0; i < 100 && !(await evaluate('!!window.pixelgen').catch(() => false)); i++) {
   await new Promise((r) => setTimeout(r, 100));
 }
 
-const out = await evaluate(`(async () => {
+// --empty stops before an image is opened, which is the only way to look at
+// the state the page is actually first seen in.
+const empty = process.argv.includes('--empty');
+
+const out = empty ? { boxes: [[0, 0, 0, 0], [0, 0, 0, 0]], grid: [0, 0] } : await evaluate(`(async () => {
   // A cool upper half, a warm lower half, a small bright warm lamp: the shape
   // the starter analysis is looking for.
   const c = document.createElement('canvas');
@@ -107,8 +123,9 @@ const out = await evaluate(`(async () => {
   cx.fillStyle = '#fad278'; cx.beginPath(); cx.arc(120, 240, 14, 0, 7); cx.fill();
   const blob = await new Promise((r) => c.toBlob(r));
 
+  // No click on #starter: opening an image is supposed to leave a scene on
+  // screen by itself. The button only repeats it.
   await window.pixelgen.open(new File([blob], 'smoke.png'));
-  document.getElementById('starter').click();
 
   const s = window.pixelgen.state.session;
   const view = document.getElementById('view');
@@ -138,6 +155,19 @@ const out = await evaluate(`(async () => {
 
   return {
     grid: [view.width, view.height],
+    // The drawn size of both canvases. They must agree: a click on the overlay
+    // becomes a fraction of the frame by way of its box, so the two boxes
+    // drifting apart would put every drawn point in the wrong place - and a
+    // plate left at 1x in a large viewport is a defect no assertion above sees.
+    // The room the plate had to fill, for the fit assertion below.
+    room: (() => {
+      const b = document.getElementById('viewport').getBoundingClientRect();
+      return [Math.round(b.width), Math.round(b.height)];
+    })(),
+    boxes: [view, overlay].map((c) => {
+      const b = c.getBoundingClientRect();
+      return [Math.round(b.left), Math.round(b.top), Math.round(b.width), Math.round(b.height)];
+    }),
     frames: s.frames,
     fps: s.fps,
     colours: s.palette.length,
@@ -145,6 +175,7 @@ const out = await evaluate(`(async () => {
     counter: document.getElementById('counter').textContent,
     snippet: document.getElementById('snippet').value,
     error: document.getElementById('error').hidden ? null : document.getElementById('error').textContent,
+    scene: document.getElementById('yaml').value.slice(0, 40),
     status: document.getElementById('status').textContent,
     // A blank canvas is the failure this whole test exists to catch.
     painted: (() => {
@@ -156,17 +187,37 @@ const out = await evaluate(`(async () => {
   };
 })()`);
 
-console.log(out);
+if (!empty) console.log(out);
 if (errors.length) console.log('console errors:', errors);
+
+// --shot writes a full-page screenshot, which is the only way to actually
+// look at a change to the stylesheet without a browser open.
+const shot = process.argv.indexOf('--shot');
+if (shot !== -1) {
+  const path = process.argv[shot + 1] ?? 'shot.png';
+  const { data } = (await send('Page.captureScreenshot', { format: 'png' })).result;
+  await writeFile(path, Buffer.from(data, 'base64'));
+  console.log('wrote', path);
+}
 
 ws.close();
 proc.kill();
 server.close();
 
 const bad = [];
+if (empty) { console.log('ok (empty, no assertions run)'); process.exit(0); }
 if (!out.painted) bad.push('canvas is a flat colour');
 if (out.error) bad.push('scene error: ' + out.error);
 if (!out.layers.length) bad.push('no layers');
+if (!out.scene.trim()) bad.push('opening an image left the scene box empty');
+if (out.boxes[0].join() !== out.boxes[1].join()) bad.push('overlay is not over the plate: ' + JSON.stringify(out.boxes));
+// The plate should be the largest whole multiple of the frame that fits: not
+// left at 1x in a large viewport, and not blown past the edges of a small one.
+const scale = out.boxes[0][2] / out.grid[0];
+if (!Number.isInteger(scale) || scale < 1) bad.push('plate is not a whole multiple of the frame: ' + scale);
+else if ((scale + 1) * out.grid[0] <= out.room[0] - 32 && (scale + 1) * out.grid[1] <= out.room[1] - 32) {
+  bad.push(`plate sat at ${scale}x in a viewport with room for more: ` + JSON.stringify(out.room));
+}
 if (out.counter !== `6/${out.frames}`) bad.push('scrub did not move the frame: ' + out.counter);
 if (!/^polygon:(\n\s+- \{ x: [\d.]+, y: [\d.]+ \}){3}$/.test(out.snippet)) {
   bad.push('mask editor emitted: ' + JSON.stringify(out.snippet));

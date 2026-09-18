@@ -137,6 +137,16 @@ impl Session {
             .unwrap_or_default()
     }
 
+    /// The effect type of each drawn layer, parallel to [`Session::layers`].
+    ///
+    /// Taken from the scene rather than from the prepared layers because the
+    /// two are the same list: preparation drops the disabled entries and keeps
+    /// the order.
+    #[wasm_bindgen(getter)]
+    pub fn layer_types(&self) -> Vec<String> {
+        self.scene.layers.iter().filter(|l| !l.disable).map(|l| l.r#type.clone()).collect()
+    }
+
     /// The scene palette as `#rrggbb`, in the renderer's own order - adjacent
     /// entries are adjacent shades, which is what makes `palette_cycle` read
     /// as flow and what the editor should preserve when showing swatches.
