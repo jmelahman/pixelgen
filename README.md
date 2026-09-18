@@ -136,7 +136,12 @@ python3 -m http.server -d web 8000
 ```
 
 Nothing is uploaded and there is no build step beyond the wasm: the page is
-three static files and a `<script type="module">`.
+three static files and a `<script type="module">`. The same bundle is published
+to GitHub Pages by `.github/workflows/pages.yml` on every push to `master`, at
+<https://jamison.lahman.dev/pixelgen/>.
+
+The photograph never leaves the browser - it is decoded to a canvas and handed
+straight to the wasm module, and there is no server to send it to.
 
 The editor is worth using for one thing in particular. A `chroma` or `luma`
 selector is defined by what it catches in _this_ image, which cannot be read off

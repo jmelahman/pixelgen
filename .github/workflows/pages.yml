@@ -1,0 +1,73 @@
+# Builds the wasm editor in web/ and publishes it to GitHub Pages.
+#
+# web/pkg is a build artifact and is not committed, so the wasm is rebuilt here
+# and the deployed page is always the one this commit's Rust produces.
+
+name: pages
+
+on:
+  push:
+    branches: [master]
+  # So a broken bundle is caught on the pull request rather than after merge.
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Let a running deploy finish rather than cancelling it half-published, but
+# queue at most one behind it.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the wasm target
+        run: rustup target add wasm32-unknown-unknown
+
+      # Also caches ~/.cargo/bin, which is what keeps the wasm-bindgen-cli
+      # install below from rebuilding on every run.
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install wasm-bindgen-cli
+        run: |
+          # The version is read from Cargo.lock rather than written here, so it
+          # cannot drift from the crate the bundle is built against.
+          want=$(awk '/^name = "wasm-bindgen"$/ { getline; gsub(/[",]/, "", $3); print $3; exit }' Cargo.lock)
+          have=$("$HOME/.cargo/bin/wasm-bindgen" --version 2>/dev/null | awk '{print $2}' || true)
+          [ "$have" = "$want" ] || cargo install wasm-bindgen-cli --version "$want" --force
+
+      - run: ./build-web.sh
+
+      - name: Smoke-test the page
+        # Headless Chromium is already on the runner. This loads the built
+        # bundle, generates a scene and plays it, so a page that cannot start
+        # is never published.
+        env:
+          CHROME: google-chrome
+        run: node tools/web-smoke.mjs
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web
+
+  deploy:
+    # A pull request has nowhere to deploy to, and should not overwrite the
+    # live site from a fork in any case.
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4
