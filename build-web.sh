@@ -22,13 +22,33 @@ if [ "$have" != "$want" ]; then
   exit 1
 fi
 
+# A hook runner runs this inside a toolchain of its own choosing, which will
+# have only the host target installed. Ask rustc which toolchain it belongs to
+# rather than rustup, which would answer for the default one and add the target
+# to a toolchain nothing here is using.
+if [ ! -d "$(rustc --print target-libdir --target wasm32-unknown-unknown)" ]; then
+  rustup target add --toolchain "$(basename "$(rustc --print sysroot)")" wasm32-unknown-unknown
+fi
+
 cargo build --release -p pixelgen-wasm --target wasm32-unknown-unknown
 wasm-bindgen --target web --no-typescript --out-dir web/pkg \
   target/wasm32-unknown-unknown/release/pixelgen_wasm.wasm
 
 # Optional, and worth it: roughly halves the payload.
+#
+# The feature flags are not decoration. wasm-bindgen's glue grows the externref
+# table at startup, and a wasm-opt that has not been told reference-types are in
+# play rewrites the table with no room to grow - producing a bundle that builds
+# and ships and then dies on load with "failed to grow table by 4". An old
+# wasm-opt that does not recognise a flag fails here instead, which is the
+# better place for it.
 if command -v wasm-opt >/dev/null; then
-  wasm-opt -Os web/pkg/pixelgen_wasm_bg.wasm -o web/pkg/pixelgen_wasm_bg.wasm
+  wasm-opt -Os \
+    --enable-reference-types \
+    --enable-bulk-memory \
+    --enable-nontrapping-float-to-int \
+    --enable-sign-ext \
+    web/pkg/pixelgen_wasm_bg.wasm -o web/pkg/pixelgen_wasm_bg.wasm
 fi
 
 echo
