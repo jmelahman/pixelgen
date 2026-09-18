@@ -238,7 +238,8 @@ p {
   min-width: 0;
   flex: 1;
   max-width: none;
-  font: 400 0.8125rem/1 var(--mono);
+  /* A full line box: at /1 the overflow clip shaves the descenders off. */
+  font: 400 0.8125rem/1.5 var(--mono);
   color: var(--dim);
   white-space: nowrap;
   overflow: hidden;
